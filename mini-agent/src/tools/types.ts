@@ -1,9 +1,9 @@
-import { z } from "zod";
+import { z } from 'zod';
 export type ToolPermission =
-  | "read"
-  | "write"
-  | "execute_safe"
-  | "execute_risky";
+    | 'read'
+    | 'write'
+    | 'execute_safe'
+    | 'execute_risky';
 
 /**
  * name：模型调用时使用的名称。
@@ -13,9 +13,9 @@ export type ToolPermission =
  * execute：真实执行逻辑。
  */
 export type ToolDefinition<Input = unknown, output = unknown> = {
-  name: string;
-  description: string;
-  permission: ToolPermission;
-  schema: z.ZodType<Input>;
-  execute: (input: Input) => Promise<output>;
+    name: string;
+    description: string;
+    permission: ToolPermission;
+    schema: z.ZodType<Input>;
+    execute: (input: Input) => Promise<output>;
 };
