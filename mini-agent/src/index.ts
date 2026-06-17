@@ -1,7 +1,10 @@
 import { config } from "./config";
 import type { ChatMessage } from "./types";
+import { DeepSeek } from "./service/index";
 
 const input = process.argv.slice(2).join(" ").trim();
+
+console.log(config, "config");
 
 /**
  * 添加消息到消息列表
@@ -23,14 +26,22 @@ if (!input) {
   process.exit(1);
 }
 
-addMsg({
+// 用户Msg
+const HumanMessage: ChatMessage = {
   role: "user",
   content: input,
-});
+};
 
-addMsg({
+// 添加用户输入的消息 到历史缓存
+addMsg(HumanMessage);
+
+const aiMsg = await DeepSeek(messages);
+
+// ai Msg
+const AiMessage: ChatMessage = {
   role: "assistant",
-  content: "正在执行命令...",
-});
+  content: aiMsg,
+};
+addMsg(AiMessage);
 
 console.log("当前消息列表：", messages);
