@@ -1,9 +1,9 @@
-import { ChatMessage } from "../types";
+import { BaseMessage } from "../message/type";
 import { config } from "../config";
 
 // DeepSeek API 请求函数
 export async function DeepSeek(
-  messages: ChatMessage[],
+  messages: BaseMessage[],
   onChunk?: (chunk: string) => void,
 ): Promise<string> {
   const response = await fetch("https://api.deepseek.com/chat/completions", {
