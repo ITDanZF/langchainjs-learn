@@ -13,6 +13,7 @@
 | 03 | [最小 CLI 对话程序](./03-最小CLI对话程序.md) | 命令行入口、用户输入、消息结构 |
 | 04 | [第一次调用真实大模型](./04-第一次调用真实大模型.md) | fetch、DeepSeek API、真实 assistant 回复 |
 | 05 | [大模型客户端封装](./05-大模型客户端封装.md) | 模型适配层、统一接口、客户端边界 |
+| 05b | [迭代器与异步生成器](./05b-迭代器与异步生成器.md) | Iterator、Generator、Async Generator、流式输出改造 |
 | 06 | [工具系统设计](./06-工具系统设计.md) | Tool Registry、schema、工具描述、错误处理 |
 | 07 | [文件与搜索工具](./07-文件与搜索工具.md) | read_file、list_files、search_text |
 | 08 | [命令执行与权限](./08-命令执行与权限.md) | run_command、allowlist、审批模型 |
