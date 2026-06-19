@@ -173,10 +173,9 @@ switch (command) {
 把前面学到的内容组合起来：
 
 1. 循环读取用户输入
-2. 把用户输入加入 `messages`
+2. 用 `HumanMessage` 把用户输入加入消息缓存
 3. 调用 DeepSeek
-4. 打印 AI 回复
-5. 把 AI 回复加入 `messages`
+4. 用 `AIMessage` 把 AI 回复加入消息缓存
 
 ```ts
 import { config } from "./config";
@@ -184,21 +183,11 @@ import type { ChatMessage } from "./types";
 import { DeepSeek } from "./service/index";
 import * as readline from "node:readline/promises";
 import { stdin as input, stdout as output } from "node:process";
+import { HumanMessage, AIMessage } from "./message/index";
 
 const rl = readline.createInterface({ input, output });
 
 async function main() {
-  const messages: ChatMessage[] = [
-    {
-      role: "system",
-      content: "你是一个命令行agent!",
-    },
-  ];
-
-  function addMsg(msg: ChatMessage) {
-    messages.push(msg);
-  }
-
   let running = true;
 
   while (running) {
@@ -221,16 +210,13 @@ async function main() {
     if (input === "") continue;
 
     // 1. 先加用户消息
-    addMsg({ role: "user", content: input });
+    const newMsg = HumanMessage(input);
 
     // 2. 调用 DeepSeek
-    const aiMsg = await DeepSeek(messages);
+    const aiMsg = await DeepSeek(newMsg);
 
-    // 3. 打印回复
-    console.log("AI:", aiMsg);
-
-    // 4. 把 AI 回复加入历史
-    addMsg({ role: "assistant", content: aiMsg });
+    // 3. 把 AI 回复加入历史
+    AIMessage(aiMsg);
   }
 
   rl.close();
@@ -282,13 +268,18 @@ data: [DONE]
 
 ### 5.4 改造 DeepSeek 函数
 
-让 `DeepSeek` 支持一个 `onChunk` 回调：
+把流式输出改造成**异步生成器（Async Generator）**，让"数据生产"和"数据消费"解耦。
+
+新增 `src/service/generators/AiModel.ts`：
 
 ```ts
-export async function DeepSeek(
-  messages: ChatMessage[],
-  onChunk?: (chunk: string) => void
-) {
+import { BaseMessage } from "../../message/type";
+import { config } from "../../config";
+
+export async function* DeepSeekStream(
+  messages: BaseMessage[],
+  signal?: AbortSignal
+): AsyncGenerator<string, string> {
   const response = await fetch("https://api.deepseek.com/chat/completions", {
     method: "POST",
     headers: {
@@ -300,6 +291,7 @@ export async function DeepSeek(
       messages,
       stream: true,
     }),
+    signal,
   });
 
   if (!response.ok) {
@@ -326,17 +318,19 @@ export async function DeepSeek(
       if (!trimmed || !trimmed.startsWith("data:")) continue;
 
       const jsonStr = trimmed.slice(5).trim();
-      if (jsonStr === "[DONE]") continue;
+      if (jsonStr === "[DONE]") break;
 
       try {
         const data = JSON.parse(jsonStr);
         const content = data.choices?.[0]?.delta?.content;
         if (content) {
           fullContent += content;
-          onChunk?.(content);
+          yield content;
         }
-      } catch {
-        // 忽略解析失败的行
+      } catch (error) {
+        if (jsonStr !== "") {
+          console.error("SSE 解析失败:", jsonStr, error);
+        }
       }
     }
   }
@@ -345,36 +339,58 @@ export async function DeepSeek(
 }
 ```
 
-### 5.5 在 main 中流式打印
+然后在 `src/service/index.ts` 中消费这个生成器：
 
 ```ts
-process.stdout.write("AI: ");
+import { BaseMessage } from "../message/type";
+import { config } from "../config";
+import { DeepSeekStream } from "./generators/AiModel";
 
-const aiMsg = await DeepSeek(messages, (chunk) => {
-  process.stdout.write(chunk);
-});
-
-process.stdout.write("\n");
-
-addMsg({ role: "assistant", content: aiMsg });
+/**
+ * DeepSeek api请求
+ */
+export async function DeepSeek(newMsg: BaseMessage[]) {
+  let aiMsg = "";
+  for await (const chunk of DeepSeekStream(newMsg)) {
+    process.stdout.write(chunk);
+    aiMsg += chunk;
+  }
+  process.stdout.write("\n");
+  return aiMsg;
+}
 ```
 
-用 `process.stdout.write` 而不是 `console.log`，因为 `console.log` 会自动换行。
+关键变化：
+
+- `DeepSeekStream` 用 `async function*` 声明，返回 `AsyncGenerator<string, string>`。
+- 每收到一段内容就用 `yield content` 交给调用方。
+- `DeepSeek` 用 `for await...of` 消费生成器，边打印边拼接完整回复。
+
+### 5.5 在 main 中流式打印
+
+`DeepSeek` 函数内部已经负责打印，所以 `index.ts` 里直接调用即可：
+
+```ts
+// 2.调用ai模型
+const aiMsg = await DeepSeek(newMsg);
+```
+
+`process.stdout.write` 不会自动换行，所以流式输出是一段接一段显示；函数最后会补一个 `\n`。
 
 ---
 
 ## 6. 完整代码
 
-### src/service/index.ts
+### src/service/generators/AiModel.ts
 
 ```ts
-import { ChatMessage } from "../types";
-import { config } from "../config";
+import { BaseMessage } from "../../message/type";
+import { config } from "../../config";
 
-export async function DeepSeek(
-  messages: ChatMessage[],
-  onChunk?: (chunk: string) => void
-) {
+export async function* DeepSeekStream(
+  messages: BaseMessage[],
+  signal?: AbortSignal
+): AsyncGenerator<string, string> {
   const response = await fetch("https://api.deepseek.com/chat/completions", {
     method: "POST",
     headers: {
@@ -386,6 +402,7 @@ export async function DeepSeek(
       messages,
       stream: true,
     }),
+    signal,
   });
 
   if (!response.ok) {
@@ -412,22 +429,45 @@ export async function DeepSeek(
       if (!trimmed || !trimmed.startsWith("data:")) continue;
 
       const jsonStr = trimmed.slice(5).trim();
-      if (jsonStr === "[DONE]") continue;
+      if (jsonStr === "[DONE]") break;
 
       try {
         const data = JSON.parse(jsonStr);
         const content = data.choices?.[0]?.delta?.content;
         if (content) {
           fullContent += content;
-          onChunk?.(content);
+          yield content;
         }
-      } catch {
-        // 忽略解析失败的行
+      } catch (error) {
+        if (jsonStr !== "") {
+          console.error("SSE 解析失败:", jsonStr, error);
+        }
       }
     }
   }
 
   return fullContent;
+}
+```
+
+### src/service/index.ts
+
+```ts
+import { BaseMessage } from "../message/type";
+import { config } from "../config";
+import { DeepSeekStream } from "./generators/AiModel";
+
+/**
+ * DeepSeek api请求
+ */
+export async function DeepSeek(newMsg: BaseMessage[]) {
+  let aiMsg = "";
+  for await (const chunk of DeepSeekStream(newMsg)) {
+    process.stdout.write(chunk);
+    aiMsg += chunk;
+  }
+  process.stdout.write("\n");
+  return aiMsg;
 }
 ```
 
@@ -439,28 +479,21 @@ import type { ChatMessage } from "./types";
 import { DeepSeek } from "./service/index";
 import * as readline from "node:readline/promises";
 import { stdin as input, stdout as output } from "node:process";
+import { HumanMessage, AIMessage } from "./message/index";
 
+// 创建第一个 readline 接口实例
 const rl = readline.createInterface({ input, output });
 
 async function main() {
-  const messages: ChatMessage[] = [
-    {
-      role: "system",
-      content: "你是一个命令行agent!",
-    },
-  ];
-
-  function addMsg(msg: ChatMessage) {
-    messages.push(msg);
-  }
-
   let running = true;
 
   while (running) {
-    const userInput = await rl.question("请输入命令（exit 退出）：");
+    const userInput = await rl.question(
+      "请输入命令（输入exit或quit退出）："
+    );
 
     if (userInput == null) {
-      console.log("EOF，退出");
+      console.log("EOF, 退出");
       running = false;
       continue;
     }
@@ -475,15 +508,17 @@ async function main() {
 
     if (input === "") continue;
 
-    addMsg({ role: "user", content: input });
+    // 1.添加用户输入的消息到历史缓存
+    const newMsg = HumanMessage(input);
 
-    process.stdout.write("AI: ");
-    const aiMsg = await DeepSeek(messages, (chunk) => {
-      process.stdout.write(chunk);
-    });
-    process.stdout.write("\n");
+    // 2.调用ai模型
+    const aiMsg = await DeepSeek(newMsg);
 
-    addMsg({ role: "assistant", content: aiMsg });
+    // 3.把ai生成的结果加入到消息缓存中
+    AIMessage(aiMsg);
+
+    // 截取命令
+    const [command, ...args] = input.split(/\s+/);
   }
 
   rl.close();
@@ -522,12 +557,12 @@ const answer = await rl.question(prompt);
 
 ```ts
 // ✅ 正确
-addMsg({ role: "user", content: input });
-const aiMsg = await DeepSeek(messages);
+const newMsg = HumanMessage(input);
+const aiMsg = await DeepSeek(newMsg);
 
 // ❌ 错误
-const aiMsg = await DeepSeek(messages);
-addMsg({ role: "user", content: input });
+const aiMsg = await DeepSeek(newMsg);
+HumanMessage(input);
 ```
 
 ### Q3: 流式输出为什么中间有换行
@@ -536,11 +571,14 @@ addMsg({ role: "user", content: input });
 
 ```ts
 // ❌ 每段都会换行
-onChunk?.(content);
-console.log(content);
+for await (const chunk of DeepSeekStream(messages)) {
+  console.log(chunk);
+}
 
 // ✅ 连续追加
-process.stdout.write(content);
+for await (const chunk of DeepSeekStream(messages)) {
+  process.stdout.write(chunk);
+}
 ```
 
 ### Q4: 中文字符显示乱码
@@ -570,4 +608,4 @@ const chunk = decoder.decode(value, { stream: true });
 
 ## 下一章预告
 
-本章直接在 `index.ts` 里调用了 `DeepSeek(messages)`。下一章会把这段调用封装成统一的 `LLMClient`，让调用方不需要关心具体是 DeepSeek 还是其他模型。
+本章直接在 `index.ts` 里调用了 `DeepSeek(newMsg)`。下一章会把这段调用封装成统一的 `LLMClient`，让调用方不需要关心具体是 DeepSeek 还是其他模型。
