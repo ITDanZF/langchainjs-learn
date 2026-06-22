@@ -12,6 +12,57 @@ src/prompts/system.ts
 src/chains/ask.ts
 ```
 
+
+## 0. 开始前确认 package.json
+
+进入本章前，先确认第 01 章的 `package.json` 至少已经具备这些关键配置：
+
+```json
+{
+  "type": "module",
+  "scripts": {
+    "dev": "tsx src/cli.ts",
+    "build": "tsc",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@langchain/core": "...",
+    "@langchain/openai": "...",
+    "dotenv": "...",
+    "zod": "...",
+    "commander": "..."
+  },
+  "devDependencies": {
+    "tsx": "...",
+    "typescript": "...",
+    "@types/node": "..."
+  }
+}
+```
+
+如果你的项目还是最初的 CommonJS 配置：
+
+```json
+{
+  "type": "commonjs",
+  "main": "index.js"
+}
+```
+
+需要先回到第 01 章完成改造。否则本章里的 `import ... from`、`.js` 后缀导入和 `tsx src/cli.ts` 都可能报错。
+
+本章会第一次真正加载 `.env` 并调用模型，所以也要确认：
+
+```bash
+cp .env.example .env
+```
+
+然后在 `.env` 中填入：
+
+```bash
+DEEPSEEK_API_KEY=你的 key
+```
+
 ## 1. 模型封装
 
 创建 `src/models/chat.ts`：

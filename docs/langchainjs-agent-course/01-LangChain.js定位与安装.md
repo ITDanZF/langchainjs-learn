@@ -54,42 +54,62 @@ npm install langchain @langchain/core @langchain/openai @langchain/langgraph zod
 
 ## 3. package.json
 
-把 `package.json` 调整为：
+安装依赖后，不建议手写 `latest` 版本号；让 `npm install` 写入实际版本，再手动补齐项目元信息、脚本和 CLI 入口。
+
+把 `package.json` 调整为类似下面的结构：
 
 ```json
 {
   "name": "mini-agent-langchain",
   "version": "0.1.0",
+  "description": "Enterprise-ready Agent CLI built with LangChain.js",
+  "private": true,
   "type": "module",
+  "main": "./dist/cli.js",
+  "types": "./dist/cli.d.ts",
   "bin": {
     "mini-agent": "./dist/cli.js"
+  },
+  "files": [
+    "dist",
+    "README.md"
+  ],
+  "engines": {
+    "node": ">=20.0.0"
   },
   "scripts": {
     "dev": "tsx src/cli.ts",
     "build": "tsc",
     "start": "node dist/cli.js",
     "test": "vitest run",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "check": "npm run typecheck && npm run test && npm run build"
   },
   "dependencies": {
-    "@langchain/core": "latest",
-    "@langchain/langgraph": "latest",
-    "@langchain/openai": "latest",
-    "commander": "latest",
-    "dotenv": "latest",
-    "langchain": "latest",
-    "zod": "latest"
+    "@langchain/core": "安装后由 npm 生成",
+    "@langchain/langgraph": "安装后由 npm 生成",
+    "@langchain/openai": "安装后由 npm 生成",
+    "commander": "安装后由 npm 生成",
+    "dotenv": "安装后由 npm 生成",
+    "langchain": "安装后由 npm 生成",
+    "zod": "安装后由 npm 生成"
   },
   "devDependencies": {
-    "@types/node": "latest",
-    "tsx": "latest",
-    "typescript": "latest",
-    "vitest": "latest"
+    "@types/node": "安装后由 npm 生成",
+    "tsx": "安装后由 npm 生成",
+    "typescript": "安装后由 npm 生成",
+    "vitest": "安装后由 npm 生成"
   }
 }
 ```
 
-实际项目里建议锁定版本；教程中用 `latest` 是为了表达依赖集合。
+注意几点：
+
+- `type: "module"` 必须保留，因为后续 TypeScript 和 LangChain.js 示例都使用 ESM。
+- `bin.mini-agent` 指向构建后的 `dist/cli.js`，开发阶段仍然使用 `npm run dev -- ...`。
+- `private: true` 适合课程阶段，避免误发布；第 11 章准备发布时再改成 `false` 或删除。
+- `check` 脚本会在后续章节成为提交前的总验证命令。
+- `dependencies` 里的版本应以你本地 `npm install` 实际生成的版本为准，不要把上面的中文占位值复制进去。
 
 ## 4. tsconfig.json
 
