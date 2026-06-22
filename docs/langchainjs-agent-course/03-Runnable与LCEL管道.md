@@ -1,150 +1,125 @@
-# 03. Runnable 与 LCEL 管道
+# 03. Runnable 与流式输出：让终端体验更自然
 
 ## 本章目标
 
-本章学习 LangChain.js 的核心抽象：`Runnable`。
+本章让 `mini-agent ask` 支持流式输出。
 
-你会把上一章的流程：
-
-```text
-prompt.formatMessages(input)
-chatModel.invoke(messages)
-```
-
-改成更框架化的 LCEL 管道：
-
-```text
-prompt.pipe(model).pipe(parser)
-```
-
-## 1. Runnable 是什么
-
-在 LangChain.js 里，很多对象都实现了 Runnable：
-
-- PromptTemplate。
-- ChatModel。
-- OutputParser。
-- Tool。
-- Chain。
-- 自定义函数包装后的 Runnable。
-
-Runnable 的共同特点是：
-
-```ts
-await runnable.invoke(input)
-```
-
-也就是说，它们都可以接收输入并产生输出。
-
-## 2. 创建基础 Chain
-
-创建 `src/chains/basic-chain.ts`：
-
-```ts
-import { StringOutputParser } from "@langchain/core/output_parsers";
-import { ChatPromptTemplate } from "@langchain/core/prompts";
-import { chatModel } from "../models/chat";
-
-const prompt = ChatPromptTemplate.fromMessages([
-  ["system", "你是一个清晰、耐心的技术老师。"],
-  ["human", "请解释：{topic}"],
-]);
-
-export const basicChain = prompt.pipe(chatModel).pipe(new StringOutputParser());
-```
-
-这条链的含义是：
-
-```text
-输入 { topic }
-  ↓
-prompt 生成 messages
-  ↓
-chatModel 调用大模型
-  ↓
-StringOutputParser 提取文本
-```
-
-## 3. 在入口中调用 Chain
-
-修改 `src/index.ts`：
-
-```ts
-import { basicChain } from "./chains/basic-chain";
-
-const topic = process.argv.slice(2).join(" ").trim();
-
-if (!topic) {
-  console.error("请输入要解释的主题");
-  process.exit(1);
-}
-
-const result = await basicChain.invoke({ topic });
-console.log(result);
-```
-
-运行：
+完成后可以运行：
 
 ```bash
-npm run dev "什么是 agent loop"
+npm run dev -- ask "给我一个学习计划"
+npm run dev -- ask --no-stream "给我一个学习计划"
 ```
 
-## 4. LCEL 的 pipe 思维
+## 1. 为什么要流式输出
 
-LCEL 是 LangChain Expression Language。
+Agent CLI 的响应可能需要几秒甚至几十秒。如果等完整结果生成后才显示，用户会觉得程序卡住。
 
-你可以把它理解成“把多个可运行组件接起来”：
-
-```ts
-const chain = step1.pipe(step2).pipe(step3);
-```
-
-和普通函数组合类似：
+流式输出的体验是：
 
 ```text
-step3(step2(step1(input)))
+模型生成一点 → 终端显示一点 → 用户持续看到进度
 ```
 
-只是每一步都支持异步、流式、批处理、追踪和组合。
+LangChain.js 的 Runnable 支持 `invoke()` 和 `stream()`，因此同一条链可以同时支持普通调用和流式调用。
 
-## 5. 流式输出
+## 2. 扩展 Ask Chain
 
-很多 CLI 或 TUI 都需要边生成边显示。
+修改 `src/chains/ask.ts`：
 
 ```ts
-const stream = await basicChain.stream({
-  topic: "LangChain.js 的 Runnable",
-});
+export async function streamAsk(input: string) {
+  return createAskChain().stream({ input });
+}
+```
 
-for await (const chunk of stream) {
-  process.stdout.write(chunk);
+保留上一章的 `ask()`，这样 CLI 可以通过参数切换。
+
+## 3. 流式输出工具
+
+创建 `src/utils/stream.ts`：
+
+```ts
+export async function writeTextStream(stream: AsyncIterable<unknown>) {
+  for await (const chunk of stream) {
+    const text = extractText(chunk);
+    if (text) process.stdout.write(text);
+  }
+
+  process.stdout.write("\n");
 }
 
-process.stdout.write("\n");
+function extractText(chunk: unknown) {
+  if (
+    typeof chunk === "object" &&
+    chunk !== null &&
+    "content" in chunk &&
+    typeof chunk.content === "string"
+  ) {
+    return chunk.content;
+  }
+
+  return "";
+}
 ```
 
-## 6. 批处理
+这是教学版实现。生产项目中可以进一步处理 reasoning、tool event、错误事件和 JSON chunk。
 
-如果要同时处理多个输入：
+## 4. CLI 增加 --no-stream
+
+修改 `ask` 命令：
 
 ```ts
-const results = await basicChain.batch([
-  { topic: "ChatModel" },
-  { topic: "Tool" },
-  { topic: "LangGraph" },
-]);
+import { ask, streamAsk } from "./chains/ask.js";
+import { writeTextStream } from "./utils/stream.js";
 
-console.log(results);
+program
+  .command("ask")
+  .description("Ask a single question")
+  .argument("<input...>", "question text")
+  .option("--no-stream", "disable streaming output")
+  .action(async (input: string[], options: { stream: boolean }) => {
+    const question = joinArgs(input);
+    if (!ensureInput(question, "请输入问题")) return;
+
+    if (options.stream) {
+      const stream = await streamAsk(question);
+      await writeTextStream(stream);
+      return;
+    }
+
+    const response = await ask(question);
+    console.log(response.content);
+  });
 ```
 
-## 7. 本章验收
+## 5. Runnable 知识体系
 
-完成后，你应该能：
+LangChain.js 中许多对象都遵循 Runnable 风格：
 
-- 理解 Runnable 是 LangChain.js 的组合单元。
-- 使用 `prompt.pipe(model).pipe(parser)`。
-- 用 `invoke` 执行单次调用。
-- 用 `stream` 做流式输出。
-- 用 `batch` 做批量处理。
+| 方法 | 作用 |
+| --- | --- |
+| `invoke()` | 单次调用 |
+| `stream()` | 流式调用 |
+| `batch()` | 批量调用 |
+| `pipe()` | 串联步骤 |
 
-下一章会把第一版的 Tool 系统迁移到 LangChain.js 的 `tool()`。
+理解 Runnable 后，后续的 Prompt、模型、解析器、检索器都可以统一组合。
+
+## 6. 验收
+
+```bash
+npm run dev -- ask "请用 5 点说明企业级 Agent CLI 需要哪些模块"
+```
+
+你应该看到回答逐步出现在终端。
+
+## 7. 企业级思考
+
+流式输出不只是体验问题，也会影响架构：
+
+- CLI 需要区分普通结果、token、工具事件和错误事件。
+- 日志系统不能污染标准输出。
+- 如果后续接入 WebSocket，同样可以复用 stream 层。
+
+下一章会开始实现工具系统，让 Agent 能访问本地项目。

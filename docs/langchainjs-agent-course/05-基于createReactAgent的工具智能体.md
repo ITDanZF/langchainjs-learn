@@ -1,177 +1,148 @@
-# 05. 基于 createReactAgent 的工具智能体
+# 05. Agent 任务执行：实现 mini-agent run
 
 ## 本章目标
 
-上一章已经创建了 LangChain Tool。本章要让模型自己决定什么时候调用工具。
-
-你会实现：
-
-```text
-用户问题
-  ↓
-createReactAgent
-  ↓
-模型判断是否需要工具
-  ↓
-调用 read_file
-  ↓
-把工具结果交回模型
-  ↓
-生成最终回答
-```
-
-## 1. 准备工具列表
-
-创建 `src/tools/index.ts`：
-
-```ts
-import { readFileTool } from "./read-file";
-
-export const tools = [readFileTool];
-```
-
-后续可以继续加入：
-
-- `search_text`
-- `list_files`
-- `run_command`
-- `call_business_api`
-
-## 2. 创建 ReAct Agent
-
-创建 `src/agents/react-agent.ts`：
-
-```ts
-import { createReactAgent } from "@langchain/langgraph/prebuilt";
-import { chatModel } from "../models/chat";
-import { tools } from "../tools";
-
-export const reactAgent = createReactAgent({
-  llm: chatModel,
-  tools,
-});
-```
-
-`createReactAgent` 会帮你处理：
-
-- 模型调用。
-- 工具选择。
-- 工具参数生成。
-- 工具执行。
-- 工具结果回填。
-- 最终回答。
-
-## 3. 调用 Agent
-
-修改 `src/index.ts`：
-
-```ts
-import { HumanMessage } from "@langchain/core/messages";
-import { reactAgent } from "./agents/react-agent";
-
-const input = process.argv.slice(2).join(" ").trim();
-
-if (!input) {
-  console.error("请输入任务");
-  process.exit(1);
-}
-
-const result = await reactAgent.invoke({
-  messages: [new HumanMessage(input)],
-});
-
-const lastMessage = result.messages.at(-1);
-console.log(lastMessage?.content);
-```
-
-运行：
+本章让模型自动选择工具，完成第一个真正的 Agent 命令：
 
 ```bash
-npm run dev "请阅读 package.json 并总结这个项目用到了哪些依赖"
+npm run dev -- run "阅读 README.md 并总结项目"
 ```
 
-## 4. ReAct 是什么
-
-ReAct 可以简单理解为：
+你会新增：
 
 ```text
-Reasoning + Acting
+src/agents/task-agent.ts
 ```
 
-模型不是一次性回答，而是可以在中间决定：
+## 1. ask 和 run 的区别
+
+`ask` 是问答：
 
 ```text
-我需要查看文件
-  ↓
-调用 read_file
-  ↓
-看完文件内容
-  ↓
-再回答用户
+用户输入 → 模型回答
 ```
 
-第一版课程里你手写的 agent loop，在这里由 `createReactAgent` 帮你实现。
-
-## 5. 工具描述会影响调用效果
-
-如果工具描述太模糊：
+`run` 是任务执行：
 
 ```text
-读取东西
+用户任务 → 模型判断是否需要工具 → 调用工具 → 阅读工具结果 → 输出最终答案
 ```
 
-模型就不容易知道什么时候使用它。
+企业级 Agent 的核心价值在 `run`，因为它能基于真实上下文行动。
 
-更好的描述是：
+## 2. Agent 系统提示词
 
-```text
-读取指定路径的文本文件内容。适合查看项目源码、配置和 Markdown 文档。
-```
-
-工具描述越清楚，agent 越容易做出正确选择。
-
-## 6. 增加 listFilesTool
-
-创建 `src/tools/list-files.ts`：
+创建 `src/prompts/agent.ts`：
 
 ```ts
-import { tool } from "@langchain/core/tools";
-import { readdir } from "node:fs/promises";
-import { z } from "zod";
+export const taskAgentPrompt = `
+你是 mini-agent-langchain 的企业级任务执行 Agent。
 
-export const listFilesTool = tool(
-  async ({ path }) => {
-    const entries = await readdir(path, { withFileTypes: true });
-    return entries
-      .map((entry) => (entry.isDirectory() ? `${entry.name}/` : entry.name))
-      .join("\n");
-  },
-  {
-    name: "list_files",
-    description: "列出指定目录下的文件和子目录。适合先了解项目结构。",
-    schema: z.object({
-      path: z.string().describe("要列出的目录路径"),
-    }),
-  },
-);
+你可以使用工具读取工作区文件、列目录、搜索文本。
+
+行为规则：
+1. 如果用户要求分析本地项目、文件或目录，必须先调用工具获取真实信息。
+2. 不要编造文件内容、目录结构或命令结果。
+3. 工具结果不足时，说明限制，并建议下一步。
+4. 最终回答要包含“结论”和“依据”。
+5. 引用文件时使用相对路径。
+`.trim();
 ```
 
-更新 `src/tools/index.ts`：
+## 3. 创建 Task Agent
+
+创建 `src/agents/task-agent.ts`：
 
 ```ts
-import { listFilesTool } from "./list-files";
-import { readFileTool } from "./read-file";
+import { createAgent } from "langchain";
+import { createChatModel } from "../models/chat.js";
+import { taskAgentPrompt } from "../prompts/agent.js";
+import { allTools } from "../tools/index.js";
 
-export const tools = [listFilesTool, readFileTool];
+export function createTaskAgent() {
+  return createAgent({
+    model: createChatModel(),
+    tools: allTools,
+    systemPrompt: taskAgentPrompt,
+  });
+}
+
+export async function runTask(input: string) {
+  const agent = createTaskAgent();
+
+  const result = await agent.invoke({
+    messages: [{ role: "user", content: input }],
+  });
+
+  const lastMessage = result.messages.at(-1);
+  return lastMessage?.content ?? "";
+}
 ```
 
-## 7. 本章验收
+说明：LangChain.js 新版推荐使用 `createAgent()` 构建工具调用 Agent。旧版资料中常见的 `createReactAgent()` 仍可见，但本课程以新的 `createAgent()` 思路为主。
 
-完成后，你应该能：
+## 4. 接入 CLI
 
-- 使用 `createReactAgent` 创建工具智能体。
-- 让模型自主选择工具。
-- 理解 ReAct 和手写 agent loop 的关系。
-- 添加多个工具并交给 agent 使用。
+修改 `src/cli.ts` 的 `run` 命令：
 
-下一章会进入 LangGraph 状态图，学习如何构建更可控的复杂 agent。
+```ts
+import { runTask } from "./agents/task-agent.js";
+
+program
+  .command("run")
+  .description("Run an agent task")
+  .argument("<task...>", "task text")
+  .action(async (task: string[]) => {
+    const input = joinArgs(task);
+    if (!ensureInput(input, "请输入任务")) return;
+
+    const output = await runTask(input);
+    console.log(output);
+  });
+```
+
+## 5. 验收
+
+```bash
+npm run dev -- run "列出当前项目有哪些顶层文件，并说明它们的作用"
+```
+
+再试：
+
+```bash
+npm run dev -- run "阅读 package.json，说明这个项目有哪些脚本"
+```
+
+合格表现：
+
+- Agent 会调用 `list_files` 或 `read_file`。
+- 回答里不会编造不存在的脚本。
+- 输出包含结论和依据。
+
+## 6. 工具调用失败怎么办
+
+工具可能失败，例如文件不存在。企业级 Agent 不能直接崩溃，应该：
+
+- 把工具错误转化为模型可理解的信息。
+- 告诉用户哪个路径失败。
+- 给出下一步建议。
+
+后续第 10 章会统一错误处理；本章先保持最小实现。
+
+## 7. 为什么还需要 LangGraph
+
+`createAgent()` 足够快速实现工具调用，但企业系统还需要：
+
+- 执行命令前确认。
+- 控制最大循环次数。
+- 记录每个节点耗时。
+- 在某个步骤中断和恢复。
+- 对不同任务走不同分支。
+
+这些能力会在下一章用 LangGraph 显式建模。
+
+## 8. 本章小结
+
+现在 `mini-agent run` 已经能调用工具完成本地项目任务。
+
+下一章会把这个黑盒 Agent loop 拆成状态机，为安全、记忆和复杂工作流打基础。

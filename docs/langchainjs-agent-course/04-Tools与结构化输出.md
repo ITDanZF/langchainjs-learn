@@ -1,41 +1,91 @@
-# 04. Tools 与结构化输出
+# 04. 工具系统：让 Agent 读取项目文件
 
 ## 本章目标
 
-第一版课程里，我们手写过 Tool：
+本章给 `mini-agent-langchain` 增加第一批工具。
+
+完成后项目会新增：
+
+```text
+src/utils/workspace.ts
+src/tools/list-files.ts
+src/tools/read-file.ts
+src/tools/search-text.ts
+src/tools/index.ts
+```
+
+这些工具暂时还不会自动被模型调用，下一章会交给 Agent 使用。
+
+## 1. 工具系统的企业级边界
+
+工具不是随便写一个函数给模型调用。企业项目里，工具至少要明确：
+
+- 工具名是否稳定。
+- 工具描述是否清楚。
+- 输入参数是否校验。
+- 输出是否限制长度。
+- 是否允许访问工作区外部。
+- 出错时返回什么。
+
+本章先实现本地文件工具，并强制限制在 `AGENT_WORKSPACE` 内。
+
+## 2. 工作区路径工具
+
+创建 `src/utils/workspace.ts`：
 
 ```ts
-type Tool = {
-  name: string;
-  description: string;
-  schema: unknown;
-  execute(input: unknown): Promise<string>;
-};
+import path from "node:path";
+import { env } from "../config/env.js";
+
+export const workspaceRoot = path.resolve(env.AGENT_WORKSPACE);
+
+export function resolveWorkspacePath(inputPath: string) {
+  const resolvedPath = path.resolve(workspaceRoot, inputPath);
+
+  if (!resolvedPath.startsWith(workspaceRoot)) {
+    throw new Error(`Path is outside workspace: ${inputPath}`);
+  }
+
+  return resolvedPath;
+}
+
+export function toWorkspaceRelativePath(fullPath: string) {
+  return path.relative(workspaceRoot, fullPath);
+}
 ```
 
-本章要学习 LangChain.js 里的工具写法：
+这个模块以后所有文件工具都要使用，避免工具读取任意系统路径。
+
+## 3. list_files 工具
+
+创建 `src/tools/list-files.ts`：
 
 ```ts
-tool(async (input) => { ... }, {
-  name,
-  description,
-  schema,
-})
+import { tool } from "@langchain/core/tools";
+import { readdir } from "node:fs/promises";
+import { z } from "zod";
+import { resolveWorkspacePath } from "../utils/workspace.js";
+
+export const listFilesTool = tool(
+  async ({ path }) => {
+    const dir = resolveWorkspacePath(path);
+    const entries = await readdir(dir, { withFileTypes: true });
+
+    return entries
+      .map((entry) => `${entry.isDirectory() ? "dir " : "file"} ${entry.name}`)
+      .join("\n");
+  },
+  {
+    name: "list_files",
+    description: "列出工作区内某个目录的文件和子目录。适合了解项目结构。",
+    schema: z.object({
+      path: z.string().default(".").describe("相对工作区的目录路径"),
+    }),
+  },
+);
 ```
 
-你会实现一个可以读取文件的 LangChain Tool。
-
-## 1. 安装 zod
-
-如果第 01 章已经执行过，这里不需要重复安装：
-
-```bash
-npm install zod
-```
-
-`zod` 用来描述工具参数结构。
-
-## 2. 创建 readFileTool
+## 4. read_file 工具
 
 创建 `src/tools/read-file.ts`：
 
@@ -43,107 +93,136 @@ npm install zod
 import { tool } from "@langchain/core/tools";
 import { readFile } from "node:fs/promises";
 import { z } from "zod";
+import { resolveWorkspacePath } from "../utils/workspace.js";
+
+const MAX_FILE_CHARS = 12000;
 
 export const readFileTool = tool(
   async ({ path }) => {
-    return await readFile(path, "utf-8");
+    const file = resolveWorkspacePath(path);
+    const content = await readFile(file, "utf8");
+
+    if (content.length <= MAX_FILE_CHARS) return content;
+
+    return [
+      content.slice(0, MAX_FILE_CHARS),
+      `\n[内容已截断：原始长度 ${content.length} 字符]`,
+    ].join("");
   },
   {
     name: "read_file",
-    description: "读取指定路径的文本文件内容。适合查看项目源码、配置和 Markdown 文档。",
+    description: "读取工作区内文本文件内容。适合查看 Markdown、TypeScript、JSON、配置文件。",
     schema: z.object({
-      path: z.string().describe("要读取的文件路径"),
+      path: z.string().describe("相对工作区的文件路径"),
     }),
   },
 );
 ```
 
-## 3. 工具的三个核心字段
+企业级项目必须限制工具输出长度，否则容易把上下文窗口塞满。
 
-一个 LangChain Tool 通常包含：
+## 5. search_text 工具
 
-- `name`：工具名称，模型会通过它选择工具。
-- `description`：工具说明，影响模型什么时候调用它。
-- `schema`：参数结构，告诉模型应该传什么参数。
-
-这和第一版的工具系统完全对应。
-
-## 4. 直接调用工具
-
-创建 `src/index.ts`：
+创建 `src/tools/search-text.ts`：
 
 ```ts
-import { readFileTool } from "./tools/read-file";
+import { tool } from "@langchain/core/tools";
+import { readdir, readFile } from "node:fs/promises";
+import path from "node:path";
+import { z } from "zod";
+import { resolveWorkspacePath, toWorkspaceRelativePath } from "../utils/workspace.js";
 
-const path = process.argv[2];
+const ignoredDirs = new Set(["node_modules", ".git", "dist", ".agent-index"]);
 
-if (!path) {
-  console.error("请输入文件路径");
-  process.exit(1);
-}
+export const searchTextTool = tool(
+  async ({ query, path: inputPath }) => {
+    const root = resolveWorkspacePath(inputPath);
+    const results: string[] = [];
 
-const content = await readFileTool.invoke({ path });
-console.log(content);
+    async function walk(dir: string) {
+      const entries = await readdir(dir, { withFileTypes: true });
+
+      for (const entry of entries) {
+        const fullPath = path.join(dir, entry.name);
+
+        if (entry.isDirectory()) {
+          if (!ignoredDirs.has(entry.name)) await walk(fullPath);
+          continue;
+        }
+
+        const content = await readFile(fullPath, "utf8").catch(() => "");
+        const lines = content.split("\n");
+
+        lines.forEach((line, index) => {
+          if (line.includes(query)) {
+            results.push(`${toWorkspaceRelativePath(fullPath)}:${index + 1}: ${line.trim()}`);
+          }
+        });
+      }
+    }
+
+    await walk(root);
+
+    return results.slice(0, 50).join("\n") || "No matches found";
+  },
+  {
+    name: "search_text",
+    description: "在工作区内搜索文本，返回文件路径、行号和匹配行。适合定位代码和文档。",
+    schema: z.object({
+      query: z.string().describe("要搜索的关键词"),
+      path: z.string().default(".").describe("相对工作区的搜索目录"),
+    }),
+  },
+);
 ```
 
-运行：
+## 6. 工具集合
+
+创建 `src/tools/index.ts`：
+
+```ts
+import { listFilesTool } from "./list-files.js";
+import { readFileTool } from "./read-file.js";
+import { searchTextTool } from "./search-text.js";
+
+export const filesystemTools = [listFilesTool, readFileTool, searchTextTool];
+export const allTools = [...filesystemTools];
+```
+
+以后新增工具只改这里，Agent 不需要关心工具文件分布。
+
+## 7. 工具命名规范
+
+建议使用稳定的蛇形命名：
+
+```text
+list_files
+read_file
+search_text
+search_docs
+run_command
+query_ticket
+```
+
+不要频繁改工具名。工具名一旦进入 Prompt、评估用例、日志和监控，就属于接口。
+
+## 8. 验收思路
+
+本章主要是新增工具模块。你可以先不直接运行工具，下一章通过 Agent 验收：
 
 ```bash
-npm run dev package.json
+npm run dev -- run "列出当前项目文件"
 ```
 
-## 5. 工具错误处理
+## 9. 企业级思考
 
-真实项目中，文件可能不存在。
+当前工具仍然是教学版，后续可以增强：
 
-可以先简单捕获错误：
+- 文件类型白名单。
+- 最大递归深度。
+- 搜索超时。
+- 二进制文件跳过。
+- 统一工具错误格式。
+- 工具调用审计日志。
 
-```ts
-export const readFileTool = tool(
-  async ({ path }) => {
-    try {
-      return await readFile(path, "utf-8");
-    } catch (error) {
-      return `读取文件失败：${error instanceof Error ? error.message : String(error)}`;
-    }
-  },
-  {
-    name: "read_file",
-    description: "读取指定路径的文本文件内容。适合查看项目源码、配置和 Markdown 文档。",
-    schema: z.object({
-      path: z.string().describe("要读取的文件路径"),
-    }),
-  },
-);
-```
-
-这里选择返回错误文本，而不是直接抛出异常，是为了让 agent 可以把失败信息继续纳入推理上下文。
-
-## 6. 结构化输出
-
-除了工具参数，业务应用也经常需要模型输出结构化结果。
-
-例如让模型输出任务分类：
-
-```ts
-import { z } from "zod";
-
-export const taskSchema = z.object({
-  type: z.enum(["question", "file_task", "command_task"]),
-  reason: z.string(),
-});
-```
-
-后续可以把它和模型的 structured output 能力结合，让模型稳定返回 JSON 结构。
-
-## 7. 本章验收
-
-完成后，你应该能：
-
-- 用 `tool()` 创建 LangChain.js 工具。
-- 用 `zod` 描述工具参数。
-- 理解工具名称和描述对模型选择工具的影响。
-- 直接调用工具进行调试。
-- 为工具加入基础错误处理。
-
-下一章会把工具交给 agent，让模型自己决定是否调用工具。
+下一章会把工具交给 LangChain.js Agent，完成 `mini-agent run`。

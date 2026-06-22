@@ -1,152 +1,140 @@
-# 02. ChatModel 与 Prompt 模板
+# 02. 模型与 Prompt：实现 mini-agent ask
 
 ## 本章目标
 
-本章会用 LangChain.js 跑通第一次真实模型调用，并学习 Prompt 模板。
+本章让 `mini-agent ask` 从占位输出变成真实模型回答。
 
-你会实现：
+你会新增：
 
 ```text
-用户输入
-  ↓
-PromptTemplate
-  ↓
-ChatModel
-  ↓
-模型回复
+src/models/chat.ts
+src/prompts/system.ts
+src/chains/ask.ts
 ```
 
-## 1. 创建 ChatModel
+## 1. 模型封装
 
 创建 `src/models/chat.ts`：
 
 ```ts
 import { ChatOpenAI } from "@langchain/openai";
-import { config } from "../config";
+import { env } from "../config/env.js";
 
-export const chatModel = new ChatOpenAI({
-  model: config.DEEPSEEK_MODEL,
-  apiKey: config.DEEPSEEK_API_KEY,
-  configuration: {
-    baseURL: "https://api.deepseek.com",
-  },
-});
-```
-
-DeepSeek 提供 OpenAI 兼容接口，所以可以通过 `@langchain/openai` 的 `ChatOpenAI` 接入。
-
-这里的 `ChatOpenAI` 可以理解成第一版课程里的 `DeepSeekLLMClient`。
-
-## 2. 最小调用
-
-创建 `src/index.ts`：
-
-```ts
-import { HumanMessage, SystemMessage } from "@langchain/core/messages";
-import { chatModel } from "./models/chat";
-
-const input = process.argv.slice(2).join(" ").trim();
-
-if (!input) {
-  console.error("请输入问题");
-  process.exit(1);
+export function createChatModel() {
+  return new ChatOpenAI({
+    model: env.DEEPSEEK_MODEL,
+    apiKey: env.DEEPSEEK_API_KEY,
+    configuration: {
+      baseURL: env.DEEPSEEK_BASE_URL,
+    },
+  });
 }
-
-const response = await chatModel.invoke([
-  new SystemMessage("你是一个命令行智能体助手。"),
-  new HumanMessage(input),
-]);
-
-console.log(response.content);
 ```
 
-运行：
+这里使用 `ChatOpenAI` 是因为 DeepSeek 提供 OpenAI 兼容接口。后续如果换模型，只需要替换这个模块。
 
-```bash
-npm run dev "你好，请用一句话介绍你自己"
-```
+## 2. 系统 Prompt
 
-## 3. 消息对象和第一版的关系
-
-第一版我们自己定义：
+创建 `src/prompts/system.ts`：
 
 ```ts
-export type ChatMessage = {
-  role: "system" | "user" | "assistant" | "tool";
-  content: string;
-};
+export const baseSystemPrompt = `
+你是 mini-agent-langchain 项目中的企业级命令行 Agent。
+
+回答规则：
+1. 先给结论，再给必要步骤。
+2. 涉及命令、路径、代码时使用 Markdown 代码格式。
+3. 不要声称已经读取文件或执行命令，除非工具结果明确提供。
+4. 如果信息不足，说明缺什么，而不是编造。
+5. 输出要适合终端阅读，简洁、清晰、可操作。
+`.trim();
 ```
 
-LangChain.js 使用消息类：
+企业级 Prompt 的重点不是“人设”，而是行为边界。
 
-```ts
-new SystemMessage("...")
-new HumanMessage("...")
-new AIMessage("...")
-```
+## 3. Ask Chain
 
-对应关系是：
-
-| 第一版 role | LangChain.js 消息 |
-| --- | --- |
-| `system` | `SystemMessage` |
-| `user` | `HumanMessage` |
-| `assistant` | `AIMessage` |
-| `tool` | `ToolMessage` |
-
-## 4. 使用 PromptTemplate
-
-直接手写消息可以跑通，但复杂应用里 Prompt 会越来越多。
-
-创建 `src/prompts/templates.ts`：
+创建 `src/chains/ask.ts`：
 
 ```ts
 import { ChatPromptTemplate } from "@langchain/core/prompts";
+import { createChatModel } from "../models/chat.js";
+import { baseSystemPrompt } from "../prompts/system.js";
 
-export const assistantPrompt = ChatPromptTemplate.fromMessages([
-  ["system", "你是一个擅长 Node.js 和智能体开发的教学助手。"],
-  ["human", "请回答这个问题：{question}"],
+const prompt = ChatPromptTemplate.fromMessages([
+  ["system", baseSystemPrompt],
+  ["human", "{input}"],
 ]);
-```
 
-改造 `src/index.ts`：
-
-```ts
-import { assistantPrompt } from "./prompts/templates";
-import { chatModel } from "./models/chat";
-
-const input = process.argv.slice(2).join(" ").trim();
-
-if (!input) {
-  console.error("请输入问题");
-  process.exit(1);
+export function createAskChain() {
+  return prompt.pipe(createChatModel());
 }
 
-const messages = await assistantPrompt.formatMessages({
-  question: input,
-});
-
-const response = await chatModel.invoke(messages);
-console.log(response.content);
+export async function ask(input: string) {
+  return createAskChain().invoke({ input });
+}
 ```
 
-## 5. 为什么要用模板
+这条链路是：
 
-Prompt 模板的价值是：
+```text
+input → prompt → chat model → AIMessage
+```
 
-- 把系统提示词集中管理。
-- 用变量填充用户输入。
-- 避免到处拼字符串。
-- 方便复用和测试。
-- 可以和 LCEL 管道组合。
+## 4. 输入校验工具
 
-## 6. 本章验收
+创建 `src/utils/input.ts`：
 
-完成后，你应该能：
+```ts
+export function joinArgs(args: string[]) {
+  return args.join(" ").trim();
+}
 
-- 用 LangChain.js 接入 DeepSeek。
-- 理解 `ChatOpenAI` 和 `DeepSeekLLMClient` 的关系。
-- 使用 `SystemMessage` 和 `HumanMessage`。
-- 使用 `ChatPromptTemplate` 构造消息。
+export function ensureInput(input: string, message = "请输入内容") {
+  if (input.length > 0) return true;
 
-下一章会学习 LangChain.js 的核心组合方式：Runnable 和 LCEL。
+  console.error(message);
+  process.exitCode = 1;
+  return false;
+}
+```
+
+## 5. 接入 CLI
+
+修改 `src/cli.ts` 的 `ask` 命令：
+
+```ts
+import { ask } from "./chains/ask.js";
+import { ensureInput, joinArgs } from "./utils/input.js";
+
+program
+  .command("ask")
+  .description("Ask a single question")
+  .argument("<input...>", "question text")
+  .action(async (input: string[]) => {
+    const question = joinArgs(input);
+    if (!ensureInput(question, "请输入问题")) return;
+
+    const response = await ask(question);
+    console.log(response.content);
+  });
+```
+
+## 6. 验收
+
+```bash
+npm run dev -- ask "用一句话解释 LangChain.js Agent"
+```
+
+如果 `.env` 配置正确，你会得到模型回答。
+
+## 7. 企业级思考
+
+现在代码很少，但已经埋下了企业项目的关键边界：
+
+- `models/` 负责模型供应商适配。
+- `prompts/` 负责行为规则。
+- `chains/` 负责可复用调用链。
+- `cli.ts` 只负责命令解析，不直接写模型逻辑。
+
+下一章会把一次性输出改为流式输出，提升 CLI 体验。

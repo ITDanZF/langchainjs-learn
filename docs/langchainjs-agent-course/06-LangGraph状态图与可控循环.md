@@ -1,180 +1,156 @@
-# 06. LangGraph 状态图与可控循环
+# 06. LangGraph 状态机：显式控制 Agent 循环
 
 ## 本章目标
 
-`createReactAgent` 很适合快速实现工具 agent，但复杂业务经常需要更强的控制能力。
+本章引入 LangGraph，把 Agent 执行过程从“框架内部循环”变成“项目可控状态机”。
 
-例如：
-
-- 先分类任务，再决定走哪个流程。
-- 某些工具调用前必须审批。
-- 检索失败后换策略。
-- 多个节点协作处理一个任务。
-- 每一步都要记录状态。
-
-这时就需要 LangGraph.js。
-
-本章会学习：
+你会新增：
 
 ```text
-StateGraph
-Node
-Edge
-Conditional Edge
+src/graph/task-graph.ts
 ```
 
-## 1. LangGraph 是什么
+完成后可以运行：
 
-LangGraph.js 是 LangChain 生态中用于构建有状态 agent 和工作流的框架。
+```bash
+npm run dev -- run --graph "搜索项目里和 env 有关的代码"
+```
 
-你可以把它理解成：
+## 1. 企业 Agent 为什么需要状态机
+
+简单 Agent 可以自动调用工具，但企业任务通常需要控制点：
+
+- 工具调用前检查权限。
+- 命令执行前请求确认。
+- 工具失败时走错误分支。
+- 长任务支持中断和恢复。
+- 每一步都要记录审计日志。
+
+这些需求不适合藏在一个黑盒循环里，应该用状态图表达。
+
+## 2. 状态机结构
+
+本章先实现最小图：
 
 ```text
-可控的 agent 状态机
-```
-
-第一版课程里我们手写过：
-
-```ts
-while (!done) {
-  const decision = await llm.complete(messages);
-  const observation = await runTool(decision);
-  messages.push(observation);
-}
-```
-
-LangGraph 会把这种循环拆成明确节点：
-
-```text
-agent node
+START
   ↓
-tool node
+agent 节点：模型生成回复或工具调用
   ↓
-agent node
+是否有工具调用？
+  ├─ 是 → tools 节点 → agent 节点
+  └─ 否 → END
 ```
 
-## 2. 定义状态
+这就是显式版 Agent loop。
 
-创建 `src/agents/graph-agent.ts`：
+## 3. 创建 Graph
+
+创建 `src/graph/task-graph.ts`：
 
 ```ts
 import { Annotation, StateGraph } from "@langchain/langgraph";
-import { BaseMessage, HumanMessage } from "@langchain/core/messages";
-import { chatModel } from "../models/chat";
+import { ToolNode } from "@langchain/langgraph/prebuilt";
+import { AIMessage, BaseMessage, HumanMessage, SystemMessage } from "@langchain/core/messages";
+import { createChatModel } from "../models/chat.js";
+import { taskAgentPrompt } from "../prompts/agent.js";
+import { allTools } from "../tools/index.js";
 
-const AgentState = Annotation.Root({
+const TaskState = Annotation.Root({
   messages: Annotation<BaseMessage[]>({
     reducer: (current, update) => current.concat(update),
     default: () => [],
   }),
 });
-```
 
-这里的 `messages` 就是图的状态。
+function shouldContinue(state: typeof TaskState.State) {
+  const lastMessage = state.messages.at(-1);
 
-每个节点都可以读取状态，也可以返回状态更新。
+  if (lastMessage instanceof AIMessage && lastMessage.tool_calls?.length) {
+    return "tools";
+  }
 
-## 3. 创建模型节点
+  return "end";
+}
 
-继续添加：
+export function createTaskGraph() {
+  const model = createChatModel().bindTools(allTools);
+  const toolNode = new ToolNode(allTools);
+  const systemMessage = new SystemMessage(taskAgentPrompt);
 
-```ts
-async function callModel(state: typeof AgentState.State) {
-  const response = await chatModel.invoke(state.messages);
+  async function callModel(state: typeof TaskState.State) {
+    const response = await model.invoke([systemMessage, ...state.messages]);
+    return { messages: [response] };
+  }
 
-  return {
-    messages: [response],
-  };
+  return new StateGraph(TaskState)
+    .addNode("agent", callModel)
+    .addNode("tools", toolNode)
+    .addEdge("__start__", "agent")
+    .addConditionalEdges("agent", shouldContinue, {
+      tools: "tools",
+      end: "__end__",
+    })
+    .addEdge("tools", "agent")
+    .compile();
+}
+
+export async function runGraphTask(input: string) {
+  const graph = createTaskGraph();
+  const result = await graph.invoke({
+    messages: [new HumanMessage(input)],
+  });
+
+  return result.messages.at(-1)?.content ?? "";
 }
 ```
 
-这个节点做的事情很简单：
+## 4. CLI 增加 --graph
 
-```text
-读取 messages
-调用模型
-把 AI 回复追加到 messages
-```
-
-## 4. 创建图
+修改 `run` 命令：
 
 ```ts
-export const graphAgent = new StateGraph(AgentState)
-  .addNode("model", callModel)
-  .addEdge("__start__", "model")
-  .addEdge("model", "__end__")
-  .compile();
+import { runGraphTask } from "./graph/task-graph.js";
+
+program
+  .command("run")
+  .description("Run an agent task")
+  .argument("<task...>", "task text")
+  .option("--graph", "use LangGraph runtime")
+  .action(async (task: string[], options: { graph?: boolean }) => {
+    const input = joinArgs(task);
+    if (!ensureInput(input, "请输入任务")) return;
+
+    const output = options.graph ? await runGraphTask(input) : await runTask(input);
+    console.log(output);
+  });
 ```
 
-这是最小图：
+## 5. 验收
 
-```text
-start → model → end
+```bash
+npm run dev -- run --graph "列出 src 目录，并说明每个子目录的职责"
 ```
 
-## 5. 调用图
+如果输出基于真实目录结构，说明 graph → tool → graph 的循环跑通了。
 
-修改 `src/index.ts`：
+## 6. 企业级扩展点
 
-```ts
-import { HumanMessage } from "@langchain/core/messages";
-import { graphAgent } from "./agents/graph-agent";
+后续可以在图里增加节点：
 
-const input = process.argv.slice(2).join(" ").trim();
+| 节点 | 作用 |
+| --- | --- |
+| `plan` | 先生成任务计划 |
+| `approval` | 高风险操作前请求确认 |
+| `summarize` | 压缩过长工具结果 |
+| `retry` | 工具失败后重试 |
+| `audit` | 写入审计日志 |
 
-if (!input) {
-  console.error("请输入问题");
-  process.exit(1);
-}
+## 7. 本章小结
 
-const result = await graphAgent.invoke({
-  messages: [new HumanMessage(input)],
-});
+现在你已经有两种运行时：
 
-console.log(result.messages.at(-1)?.content);
-```
+- `createAgent()`：快速、简洁。
+- `LangGraph`：可控、可扩展、适合企业复杂流程。
 
-## 6. 为什么不用 createReactAgent 就够了
-
-`createReactAgent` 是快速预制件。
-
-LangGraph 是底层编排能力。
-
-当应用足够简单时，用 `createReactAgent` 更快。
-
-当应用需要明确流程时，用 `StateGraph` 更稳：
-
-```text
-分类 → 检索 → 工具调用 → 人工审批 → 最终回答
-```
-
-## 7. 条件路由示例
-
-后续可以加入条件边：
-
-```ts
-.addConditionalEdges("model", shouldContinue, {
-  tools: "tools",
-  end: "__end__",
-})
-```
-
-含义是：
-
-```text
-模型回复后，判断是否继续调用工具。
-如果需要工具，进入 tools 节点。
-否则结束。
-```
-
-## 8. 本章验收
-
-完成后，你应该能：
-
-- 理解 LangGraph 是有状态工作流框架。
-- 定义图状态。
-- 编写一个模型节点。
-- 创建最小 `StateGraph`。
-- 理解预制 agent 和自定义图的区别。
-
-下一章会加入检查点和多轮会话记忆。
+下一章会在 LangGraph 上加入会话记忆，实现交互式 `chat`。
