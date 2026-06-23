@@ -4,19 +4,19 @@
   "description": "Enterprise-ready Agent CLI built with LangChain.js",
   "private": true,
   "type": "module",
-  "main": "./dist/cli.js",
-  "types": "./dist/cli.d.ts",
+  "main": "./dist/main.js",
+  "types": "./dist/main.d.ts",
   "bin": {
-    "mini-agent": "./dist/cli.js"
+    "mini-agent": "./dist/main.js"
   },
   "files": [
     "dist",
     "README.md"
   ],
   "scripts": {
-"dev": "tsx src/cli.ts",
+    "dev": "tsx src/main.ts",
     "build": "tsc",
-    "start": "node dist/cli.js",
+    "start": "node dist/main.js",
     "test": "vitest run",
     "typecheck": "tsc --noEmit",
     "check": "npm run typecheck && npm run test && npm run build"

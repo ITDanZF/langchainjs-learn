@@ -10,6 +10,12 @@
 src/graph/task-graph.ts
 ```
 
+你会安装：
+
+```bash
+npm install @langchain/langgraph
+```
+
 完成后可以运行：
 
 ```bash

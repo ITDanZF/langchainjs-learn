@@ -11,8 +11,17 @@ npm run dev -- run "阅读 README.md 并总结项目"
 你会新增：
 
 ```text
+src/prompts/agent.ts
 src/agents/task-agent.ts
 ```
+
+你会安装：
+
+```bash
+npm install langchain
+```
+
+第 04 章已经完成工具定义，本章才把这些工具交给 Agent 使用。
 
 ## 1. ask 和 run 的区别
 
@@ -83,7 +92,7 @@ export async function runTask(input: string) {
 
 ## 4. 接入 CLI
 
-修改 `src/cli.ts` 的 `run` 命令：
+修改 `src/main.ts` 的 `run` 命令：
 
 ```ts
 import { runTask } from "./agents/task-agent.js";

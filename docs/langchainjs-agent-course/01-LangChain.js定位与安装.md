@@ -1,8 +1,8 @@
-# 01. 项目初始化：把 mini-agent-langchain 变成 CLI 工程
+# 01. 项目初始化：只做一个最小 CLI
 
 ## 本章目标
 
-本章从你已经创建的 `mini-agent-langchain` 目录开始，搭建企业项目最小骨架。
+本章从你已经创建的 `mini-agent-langchain` 目录开始，只完成一个可运行的 TypeScript CLI。
 
 完成后可以运行：
 
@@ -10,7 +10,11 @@
 npm run dev -- ask "你好"
 ```
 
-## 1. 进入项目目录
+本章不会接入大模型，也不会提前创建 Agent、Graph、RAG、测试等目录。那些能力会在真正需要时逐章加入。
+
+## 1. 当前项目状态
+
+进入项目目录：
 
 ```bash
 cd mini-agent-langchain
@@ -20,96 +24,88 @@ cd mini-agent-langchain
 
 ```text
 package.json
-src/index.ts
+src/main.ts
 ```
 
-我们会把它改造成标准 TypeScript CLI 项目。
+本章只把它改造成：
 
-## 2. 安装依赖
+```text
+mini-agent-langchain/
+  package.json
+  tsconfig.json
+  src/
+    main.ts
+    utils/
+      input.ts
+```
+
+## 2. 安装本章依赖
 
 开发依赖：
 
 ```bash
-npm install -D typescript tsx @types/node vitest
+npm install -D typescript tsx @types/node
 ```
 
 运行依赖：
 
 ```bash
-npm install langchain @langchain/core @langchain/openai @langchain/langgraph zod dotenv commander
+npm install commander
 ```
 
-依赖职责：
+本章暂时不安装：
 
-| 依赖 | 用途 |
-| --- | --- |
-| `langchain` | Agent、工具、结构化输出等高层 API |
-| `@langchain/core` | 消息、Prompt、Runnable 等核心类型 |
-| `@langchain/openai` | OpenAI 兼容模型接入 |
-| `@langchain/langgraph` | 状态图、记忆、检查点 |
-| `commander` | CLI 子命令 |
-| `zod` | 配置和工具参数校验 |
-| `dotenv` | 加载 `.env` |
-| `vitest` | 单元测试 |
+```text
+@langchain/openai
+@langchain/core
+@langchain/langgraph
+langchain
+dotenv
+zod
+vitest
+```
+
+原因很简单：第 01 章还用不到它们。等第 02 章接模型、第 06 章接 LangGraph、第 10 章补测试时再安装。
 
 ## 3. package.json
 
-安装依赖后，不建议手写 `latest` 版本号；让 `npm install` 写入实际版本，再手动补齐项目元信息、脚本和 CLI 入口。
-
-把 `package.json` 调整为类似下面的结构：
+把 `package.json` 调整为类似下面的结构。依赖版本以你本地 `npm install` 生成的结果为准：
 
 ```json
 {
   "name": "mini-agent-langchain",
   "version": "0.1.0",
-  "description": "Enterprise-ready Agent CLI built with LangChain.js",
+  "description": "A mini Agent CLI built step by step with LangChain.js",
   "private": true,
   "type": "module",
-  "main": "./dist/cli.js",
-  "types": "./dist/cli.d.ts",
+  "main": "./dist/main.js",
+  "types": "./dist/main.d.ts",
   "bin": {
-    "mini-agent": "./dist/cli.js"
-  },
-  "files": [
-    "dist",
-    "README.md"
-  ],
-  "engines": {
-    "node": ">=20.0.0"
+    "mini-agent": "./dist/main.js"
   },
   "scripts": {
-    "dev": "tsx src/cli.ts",
+    "dev": "tsx src/main.ts",
     "build": "tsc",
-    "start": "node dist/cli.js",
-    "test": "vitest run",
-    "typecheck": "tsc --noEmit",
-    "check": "npm run typecheck && npm run test && npm run build"
+    "start": "node dist/main.js",
+    "typecheck": "tsc --noEmit"
   },
   "dependencies": {
-    "@langchain/core": "安装后由 npm 生成",
-    "@langchain/langgraph": "安装后由 npm 生成",
-    "@langchain/openai": "安装后由 npm 生成",
-    "commander": "安装后由 npm 生成",
-    "dotenv": "安装后由 npm 生成",
-    "langchain": "安装后由 npm 生成",
-    "zod": "安装后由 npm 生成"
+    "commander": "安装后由 npm 生成"
   },
   "devDependencies": {
     "@types/node": "安装后由 npm 生成",
     "tsx": "安装后由 npm 生成",
-    "typescript": "安装后由 npm 生成",
-    "vitest": "安装后由 npm 生成"
+    "typescript": "安装后由 npm 生成"
   }
 }
 ```
 
 注意几点：
 
-- `type: "module"` 必须保留，因为后续 TypeScript 和 LangChain.js 示例都使用 ESM。
-- `bin.mini-agent` 指向构建后的 `dist/cli.js`，开发阶段仍然使用 `npm run dev -- ...`。
-- `private: true` 适合课程阶段，避免误发布；第 11 章准备发布时再改成 `false` 或删除。
-- `check` 脚本会在后续章节成为提交前的总验证命令。
-- `dependencies` 里的版本应以你本地 `npm install` 实际生成的版本为准，不要把上面的中文占位值复制进去。
+- `type: "module"` 保留，因为后续 LangChain.js 示例使用 ESM。
+- `dev` 脚本直接运行 `src/main.ts`，适合课程阶段快速调试。
+- `bin.mini-agent` 指向构建后的 `dist/main.js`，第 11 章发布 CLI 时会用到。
+- 本章不加入 `test`、`check`、`eval`，避免把后续章节的能力提前塞进来。
 
 ## 4. tsconfig.json
 
@@ -127,72 +123,46 @@ npm install langchain @langchain/core @langchain/openai @langchain/langgraph zod
     "esModuleInterop": true,
     "skipLibCheck": true
   },
-  "include": ["src", "tests"]
+  "include": ["src"]
 }
 ```
 
-LangChain.js 生态以 ESM 为主，所以项目使用 `type: module` 和 `NodeNext`。
+后续第 10 章加入测试时，再把 `tests` 放进 `include`。
 
-## 5. 创建目录
+## 5. 输入工具
 
-```bash
-mkdir -p src/{cli,config,models,prompts,chains,tools,agents,graph,memory,rag,evals,observability,utils}
-```
-
-建议先删除或不再使用 `src/index.ts`，改用 `src/cli.ts` 作为命令入口。
-
-## 6. 环境变量模板
-
-创建 `.env.example`：
-
-```bash
-DEEPSEEK_API_KEY=
-DEEPSEEK_MODEL=deepseek-chat
-DEEPSEEK_BASE_URL=https://api.deepseek.com
-AGENT_WORKSPACE=.
-LOG_LEVEL=info
-```
-
-本地复制：
-
-```bash
-cp .env.example .env
-```
-
-## 7. 配置模块
-
-创建 `src/config/env.ts`：
+创建 `src/utils/input.ts`：
 
 ```ts
-import "dotenv/config";
-import { z } from "zod";
+export function joinArgs(args: string[]) {
+  return args.join(" ").trim();
+}
 
-const EnvSchema = z.object({
-  DEEPSEEK_API_KEY: z.string().min(1, "DEEPSEEK_API_KEY is required"),
-  DEEPSEEK_MODEL: z.string().default("deepseek-chat"),
-  DEEPSEEK_BASE_URL: z.string().url().default("https://api.deepseek.com"),
-  AGENT_WORKSPACE: z.string().default("."),
-  LOG_LEVEL: z.enum(["debug", "info", "warn", "error"]).default("info"),
-});
+export function ensureInput(input: string, message = "请输入内容") {
+  if (input.length > 0) return true;
 
-export const env = EnvSchema.parse(process.env);
+  console.error(message);
+  process.exitCode = 1;
+  return false;
+}
 ```
 
-企业项目中，配置必须集中校验，不能散落在业务代码里读取 `process.env`。
+这个小工具会在后续 `ask`、`run`、`chat` 等命令里复用。
 
-## 8. CLI 入口
+## 6. CLI 入口
 
-创建 `src/cli.ts`：
+创建 `src/main.ts`：
 
 ```ts
 #!/usr/bin/env node
 import { Command } from "commander";
+import { ensureInput, joinArgs } from "./utils/input.js";
 
 const program = new Command();
 
 program
   .name("mini-agent")
-  .description("Enterprise-ready Agent CLI built with LangChain.js")
+  .description("A mini Agent CLI built step by step with LangChain.js")
   .version("0.1.0");
 
 program
@@ -200,28 +170,20 @@ program
   .description("Ask a single question")
   .argument("<input...>", "question text")
   .action(async (input: string[]) => {
-    console.log(`收到问题：${input.join(" ")}`);
-  });
+    const question = joinArgs(input);
+    if (!ensureInput(question, "请输入问题")) return;
 
-program
-  .command("run")
-  .description("Run an agent task")
-  .argument("<task...>", "task text")
-  .action(async (task: string[]) => {
-    console.log(`收到任务：${task.join(" ")}`);
-  });
-
-program
-  .command("chat")
-  .description("Start an interactive session")
-  .action(async () => {
-    console.log("chat will be implemented in chapter 07");
+    console.log(`收到问题：${question}`);
   });
 
 await program.parseAsync(process.argv);
 ```
 
-## 9. 验收
+如果项目里还有旧的 `src/index.ts` 或 `src/cli.ts`，本章开始可以不再使用它们。入口统一放到 `src/main.ts`。
+
+## 7. 验收
+
+运行：
 
 ```bash
 npm run dev -- ask "你好"
@@ -233,4 +195,17 @@ npm run dev -- ask "你好"
 收到问题：你好
 ```
 
-本章只是搭骨架。下一章会接入真实模型，让 `ask` 命令返回大模型答案。
+再运行：
+
+```bash
+npm run typecheck
+npm run build
+```
+
+如果都通过，说明第一个小版本完成。
+
+## 8. 本章小结
+
+现在项目只有一个能力：CLI 能接收 `ask` 输入。
+
+这看起来很小，但它是后续所有能力的入口。下一章会在这个入口后面接入真实模型，让 `ask` 从占位输出升级为大模型回答。

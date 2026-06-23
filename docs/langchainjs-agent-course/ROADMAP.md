@@ -1,114 +1,124 @@
-# mini-agent-langchain 主线导图
+# mini-agent-langchain 渐进式主线导图
 
-这份导图负责把 01–12 的基础实现篇和 13–22 的企业增强篇串成一条连续路线。
+这份导图说明 01-22 章如何从一个能跑的小 CLI，逐步演进成企业 Agent 平台雏形。
 
 ## 一句话主线
 
 ```text
-先做出一个能用的 Agent CLI，再把它升级成可规划、可审批、可编辑、可治理、可服务化、可扩展的企业 Agent 平台。
+先做一个能运行的小功能，再为真实痛点增加一个模块；架构不是预先铺满，而是在每次迭代后变得更清楚。
 ```
 
-## 阶段关系
+## 版本演进
 
-| 阶段 | 章节 | 目标 | 产物 | 为下一阶段提供什么 |
+| 版本 | 章节 | 新增能力 | 新增依赖 | 架构变化 |
 | --- | --- | --- | --- | --- |
-| CLI 骨架 | 01 | 项目初始化 | `mini-agent` 命令入口 | 后续所有能力的承载入口 |
-| 模型问答 | 02–03 | 模型调用与流式输出 | `mini-agent ask` | 后续 Agent 的模型封装和输出体验 |
-| 工具系统 | 04 | 本地工具能力 | `list_files`、`read_file`、`search_text` | Agent 可以接触真实项目上下文 |
-| Agent 执行 | 05 | 自动选择工具 | `mini-agent run` | 从聊天变成任务执行 |
-| 可控运行时 | 06–07 | LangGraph 和记忆 | `run --graph`、`chat` | 支撑审批、中断、多轮和复杂流程 |
-| 知识库 | 08 | 本地 RAG | `mini-agent index`、`search_docs` | 支撑企业文档问答和引用回答 |
-| 安全工具箱 | 09 | 命令执行与权限雏形 | `run_command` | 为审批流和开发助手做准备 |
-| 工程闭环 | 10–12 | 测试、评估、发布、综合验收 | `eval`、`build`、基础综合项目 | 基础篇结束，进入企业增强篇 |
-| 规划执行 | 13 | 复杂任务先规划 | `mini-agent plan`、`run --planned` | 长任务可解释、可追踪 |
-| 人工审批 | 14 | 高风险操作确认 | approval node | 把第 09 章的权限雏形升级为正式流程 |
-| 代码编辑 | 15 | 安全修改项目 | `mini-agent edit`、patch workflow | 从只读助手升级为开发助手 |
-| 知识治理 | 16 | 高级 RAG | 增量索引、混合检索、权限过滤 | 从本地 RAG 升级为企业知识库 |
-| 模型治理 | 17 | 多模型和成本 | model router | 不同任务用不同模型，控制成本 |
-| 团队协作 | 18 | 多 Agent 工作流 | Planner / Executor / Reviewer | 复杂任务分工和结果审查 |
-| 服务化 | 19 | API 和队列 | server、task queue、events | 从本地 CLI 扩展到企业系统 |
-| 安全合规 | 20 | 权限与审计 | permission、audit、guardrails | 满足企业安全底线 |
-| 插件生态 | 21 | 工具扩展 | plugin registry | 业务团队可持续接入工具 |
-| 平台蓝图 | 22 | 总架构 | Agent platform roadmap | 从课程项目走向真实平台 |
+| v0.1 | 01 | `ask` 占位 CLI | `commander`、`tsx`、`typescript` | 只有 `src/main.ts` 和输入工具 |
+| v0.2 | 02 | 真实模型回答 | `@langchain/openai`、`@langchain/core`、`dotenv`、`zod` | 新增 `config/`、`models/`、`prompts/`、`chains/` |
+| v0.3 | 03 | 流式输出 | 无 | 新增 `utils/stream.ts` |
+| v0.4 | 04 | 文件工具 | 无 | 新增 `tools/` 和工作区路径边界 |
+| v0.5 | 05 | `run` 工具 Agent | `langchain` | 新增 `agents/`，模型开始主动使用工具 |
+| v0.6 | 06 | LangGraph 运行时 | `@langchain/langgraph` | 新增 `graph/`，把循环从黑盒变成状态机 |
+| v0.7 | 07 | 多轮会话 | 无或检查点相关依赖 | 新增 `memory/` |
+| v0.8 | 08 | 本地 RAG | 向量库和文档加载相关依赖 | 新增 `rag/` 和 `index` 命令 |
+| v0.9 | 09-12 | 权限、工程化、评估、综合验收 | 按章节需要引入 | 补齐日志、错误、测试、eval |
+| v1.x | 13-22 | 规划、审批、编辑、多 Agent、服务化、插件 | 按能力引入 | 从 CLI 项目继续演进为平台雏形 |
 
-## 关键衔接点
+## 关键节奏
+
+### 01 → 02：从命令壳到模型调用
+
+第 01 章只证明 CLI 能接收输入。第 02 章第一次需要模型，因此才引入 `.env`、配置校验、模型封装和 Prompt。
+
+### 03 → 04：先改善体验，再增加行动能力
+
+第 03 章只改输出方式，不增加工具。第 04 章才加入文件工具，并且先独立实现，不急着交给 Agent。
 
 ### 04 → 05：工具交给 Agent
 
-第 04 章只是定义工具，第 05 章把工具交给 `createAgent()`，所以 `run` 命令第一次具备行动能力。
+第 04 章的工具只是普通能力模块。第 05 章新增 `run` 命令，把工具交给模型自动选择，项目第一次具备任务执行能力。
 
 ### 05 → 06：黑盒 Agent 变成可控 Graph
 
-第 05 章能快速跑通，第 06 章把循环显式化。后续审批、记忆、多 Agent 都依赖这个 Graph 基础。
+第 05 章用 `createAgent()` 快速跑通。第 06 章才引入 LangGraph，因为此时已经有了真实痛点：需要控制工具循环、权限分支、中断和审计。
 
 ### 08 → 16：最小 RAG 升级为知识库治理
 
-第 08 章先让文档可检索，第 16 章再补增量索引、元数据、混合检索、权限过滤和引用治理。
+第 08 章先让 Markdown 可索引、可检索。第 16 章再补增量索引、元数据、混合检索、权限过滤和引用治理。
 
-### 09 → 14：权限提示升级为审批流
+### 09 → 14：权限信号升级为审批流程
 
-第 09 章只是识别高风险命令，第 14 章把它接入 Human-in-the-loop，让用户确认成为 Graph 的正式节点。
-
-### 10–12 → 13：基础项目升级为复杂任务系统
-
-第 12 章证明系统已经能用；第 13 章开始解决“复杂任务怎么稳定完成”。规划器会复用前面的模型、工具、Graph、评估和日志。
-
-### 15 → 18：代码编辑需要多 Agent 审查
-
-第 15 章让 Agent 能生成 patch，第 18 章引入 Reviewer，避免 Agent 自己生成代码又自己放行。
-
-### 19 → 21：服务化后需要插件生态
-
-第 19 章把能力开放为服务，第 21 章让外部工具以插件方式接入，避免核心项目无限膨胀。
+第 09 章只做权限雏形，遇到高风险命令返回信号。第 14 章再把它接入 Human-in-the-loop 审批节点。
 
 ## 推荐学习路径
 
-如果你想稳扎稳打：
+稳扎稳打：
 
 ```text
 01 → 02 → 03 → 04 → 05 → 06 → 07 → 08 → 09 → 10 → 11 → 12
 ```
 
-如果你想做开发助手：
+开发助手方向：
 
 ```text
-01–12 → 13 → 14 → 15 → 18
+01-12 → 13 → 14 → 15 → 18
 ```
 
-如果你想做企业知识库助手：
+企业知识库方向：
 
 ```text
-01–12 → 16 → 17 → 20
+01-12 → 16 → 17 → 20
 ```
 
-如果你想做企业平台：
+平台方向：
 
 ```text
-01–12 → 13 → 14 → 17 → 18 → 19 → 20 → 21 → 22
+01-12 → 13 → 14 → 17 → 18 → 19 → 20 → 21 → 22
 ```
 
-## 最终演进图
+## 架构快照
+
+开始时：
 
 ```text
-mini-agent ask
-  ↓
-mini-agent run
-  ↓
-mini-agent run --graph
-  ↓
-mini-agent chat
-  ↓
-mini-agent index + search_docs
-  ↓
-mini-agent eval
-  ↓
-mini-agent plan
-  ↓
-mini-agent run --planned
-  ↓
-mini-agent edit
-  ↓
-mini-agent run --team
-  ↓
-mini-agent server + plugins
+src/
+  main.ts
+  utils/input.ts
 ```
+
+接入模型后：
+
+```text
+src/
+  main.ts
+  config/env.ts
+  models/chat.ts
+  prompts/system.ts
+  chains/ask.ts
+  utils/input.ts
+```
+
+具备 Agent 执行后：
+
+```text
+src/
+  agents/task-agent.ts
+  tools/
+  models/
+  prompts/
+  chains/
+  main.ts
+```
+
+引入可控运行时后：
+
+```text
+src/
+  graph/task-graph.ts
+  agents/
+  tools/
+  memory/
+  rag/
+  observability/
+```
+
+这些快照不是一次性创建清单，而是每个阶段完成后的自然结果。

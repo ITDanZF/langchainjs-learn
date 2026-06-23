@@ -145,7 +145,7 @@ export async function indexDocs(inputPath: string) {
 
 ## 7. CLI 接入 index
 
-在 `src/cli.ts` 中添加：
+在 `src/main.ts` 中添加：
 
 ```ts
 import { indexDocs } from "./rag/index-docs.js";

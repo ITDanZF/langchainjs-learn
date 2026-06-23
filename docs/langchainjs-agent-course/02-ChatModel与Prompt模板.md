@@ -7,38 +7,21 @@
 你会新增：
 
 ```text
+src/config/env.ts
 src/models/chat.ts
 src/prompts/system.ts
 src/chains/ask.ts
 ```
 
+你会安装：
+
+```bash
+npm install @langchain/core @langchain/openai dotenv zod
+```
 
 ## 0. 开始前确认 package.json
 
-进入本章前，先确认第 01 章的 `package.json` 至少已经具备这些关键配置：
-
-```json
-{
-  "type": "module",
-  "scripts": {
-    "dev": "tsx src/cli.ts",
-    "build": "tsc",
-    "typecheck": "tsc --noEmit"
-  },
-  "dependencies": {
-    "@langchain/core": "...",
-    "@langchain/openai": "...",
-    "dotenv": "...",
-    "zod": "...",
-    "commander": "..."
-  },
-  "devDependencies": {
-    "tsx": "...",
-    "typescript": "...",
-    "@types/node": "..."
-  }
-}
-```
+进入本章前，先确认第 01 章已经完成，`package.json` 至少有 `type: "module"` 和 `dev` 脚本：
 
 如果你的项目还是最初的 CommonJS 配置：
 
@@ -49,9 +32,21 @@ src/chains/ask.ts
 }
 ```
 
-需要先回到第 01 章完成改造。否则本章里的 `import ... from`、`.js` 后缀导入和 `tsx src/cli.ts` 都可能报错。
+需要先回到第 01 章完成改造。否则本章里的 `import ... from`、`.js` 后缀导入和 `tsx src/main.ts` 都可能报错。
 
-本章会第一次真正加载 `.env` 并调用模型，所以也要确认：
+## 1. 环境变量模板
+
+本章会第一次真正加载 `.env` 并调用模型，所以现在才创建 `.env.example`：
+
+```bash
+DEEPSEEK_API_KEY=
+DEEPSEEK_MODEL=deepseek-chat
+DEEPSEEK_BASE_URL=https://api.deepseek.com
+AGENT_WORKSPACE=.
+LOG_LEVEL=info
+```
+
+本地复制：
 
 ```bash
 cp .env.example .env
@@ -63,7 +58,30 @@ cp .env.example .env
 DEEPSEEK_API_KEY=你的 key
 ```
 
-## 1. 模型封装
+`AGENT_WORKSPACE` 和 `LOG_LEVEL` 暂时不会在本章发挥明显作用，但第 04 章文件工具和第 10 章日志模块会复用这份配置。
+
+## 2. 配置模块
+
+创建 `src/config/env.ts`：
+
+```ts
+import "dotenv/config";
+import { z } from "zod";
+
+const EnvSchema = z.object({
+  DEEPSEEK_API_KEY: z.string().min(1, "DEEPSEEK_API_KEY is required"),
+  DEEPSEEK_MODEL: z.string().default("deepseek-chat"),
+  DEEPSEEK_BASE_URL: z.string().url().default("https://api.deepseek.com"),
+  AGENT_WORKSPACE: z.string().default("."),
+  LOG_LEVEL: z.enum(["debug", "info", "warn", "error"]).default("info"),
+});
+
+export const env = EnvSchema.parse(process.env);
+```
+
+配置从这一章开始集中校验。后续模块只导入 `env`，不要在业务代码里到处读取 `process.env`。
+
+## 3. 模型封装
 
 创建 `src/models/chat.ts`：
 
@@ -84,7 +102,7 @@ export function createChatModel() {
 
 这里使用 `ChatOpenAI` 是因为 DeepSeek 提供 OpenAI 兼容接口。后续如果换模型，只需要替换这个模块。
 
-## 2. 系统 Prompt
+## 4. 系统 Prompt
 
 创建 `src/prompts/system.ts`：
 
@@ -103,7 +121,7 @@ export const baseSystemPrompt = `
 
 企业级 Prompt 的重点不是“人设”，而是行为边界。
 
-## 3. Ask Chain
+## 5. Ask Chain
 
 创建 `src/chains/ask.ts`：
 
@@ -132,27 +150,9 @@ export async function ask(input: string) {
 input → prompt → chat model → AIMessage
 ```
 
-## 4. 输入校验工具
+## 6. 接入 CLI
 
-创建 `src/utils/input.ts`：
-
-```ts
-export function joinArgs(args: string[]) {
-  return args.join(" ").trim();
-}
-
-export function ensureInput(input: string, message = "请输入内容") {
-  if (input.length > 0) return true;
-
-  console.error(message);
-  process.exitCode = 1;
-  return false;
-}
-```
-
-## 5. 接入 CLI
-
-修改 `src/cli.ts` 的 `ask` 命令：
+修改 `src/main.ts` 的 `ask` 命令：
 
 ```ts
 import { ask } from "./chains/ask.js";
@@ -171,7 +171,9 @@ program
   });
 ```
 
-## 6. 验收
+这里复用第 01 章已经创建的 `joinArgs()` 和 `ensureInput()`。
+
+## 7. 验收
 
 ```bash
 npm run dev -- ask "用一句话解释 LangChain.js Agent"
@@ -179,13 +181,22 @@ npm run dev -- ask "用一句话解释 LangChain.js Agent"
 
 如果 `.env` 配置正确，你会得到模型回答。
 
-## 7. 企业级思考
+## 8. 本章暂不做什么
+
+本章只解决单次问答，不做：
+
+- 流式输出：第 03 章再做。
+- 文件工具：第 04 章再做。
+- `run` 命令：第 05 章再做。
+- LangGraph：第 06 章再做。
+
+## 9. 企业级思考
 
 现在代码很少，但已经埋下了企业项目的关键边界：
 
 - `models/` 负责模型供应商适配。
 - `prompts/` 负责行为规则。
 - `chains/` 负责可复用调用链。
-- `cli.ts` 只负责命令解析，不直接写模型逻辑。
+- `main.ts` 只负责命令解析，不直接写模型逻辑。
 
 下一章会把一次性输出改为流式输出，提升 CLI 体验。
