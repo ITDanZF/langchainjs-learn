@@ -13,12 +13,12 @@
 | 版本 | 章节 | 新增能力 | 新增依赖 | 架构变化 |
 | --- | --- | --- | --- | --- |
 | v0.1 | 01 | `ask` 占位 CLI | `commander`、`tsx`、`typescript` | 只有 `src/main.ts` 和输入工具 |
-| v0.2 | 02 | 真实模型回答 | `@langchain/openai`、`@langchain/core`、`dotenv`、`zod` | 新增 `config/`、`models/`、`prompts/`、`chains/` |
-| v0.3 | 03 | 交互会话与流式输出 | 无 | 新增 `cli/chat-loop.ts` 和 `utils/stream.ts` |
+| v0.2 | 02 | 真实模型回答 | `@langchain/openai`、`@langchain/core`、`dotenv`、`zod` | 新增 `config/` 和 `model/` |
+| v0.3 | 03 | 默认交互会话与流式输出 | 无 | 新增 `cli/chat-loop.ts` 和 `utils/stream.ts`，CLI 默认入口改为 `chatAgent` |
 | v0.4 | 04 | 文件工具 | 无 | 新增 `tools/` 和工作区路径边界 |
 | v0.5 | 05 | `run` 工具 Agent | `langchain` | 新增 `agents/`，模型开始主动使用工具 |
 | v0.6 | 06 | LangGraph 运行时 | `@langchain/langgraph` | 新增 `graph/`，把循环从黑盒变成状态机 |
-| v0.7 | 07 | 交互会话加入 thread 和记忆 | 无或检查点相关依赖 | 新增 `memory/`，已有 `chat` 从无记忆升级为多轮上下文 |
+| v0.7 | 07 | 交互会话加入 thread 和记忆 | 无或检查点相关依赖 | 新增 `memory/`，默认会话从无记忆升级为多轮上下文 |
 | v0.8 | 08 | 本地 RAG | 向量库和文档加载相关依赖 | 新增 `rag/` 和 `index` 命令 |
 | v0.9 | 09-12 | 权限、工程化、评估、综合验收 | 按章节需要引入 | 补齐日志、错误、测试、eval |
 | v1.x | 13-22 | 规划、审批、编辑、多 Agent、服务化、插件 | 按能力引入 | 从 CLI 项目继续演进为平台雏形 |
@@ -31,7 +31,7 @@
 
 ### 03 → 04：先改善交互体验，再增加行动能力
 
-第 03 章新增 Claude Code 式交互会话，并让 `ask` 和 `chat` 都支持流式输出。第 04 章才加入文件工具，并且先独立实现，不急着交给 Agent。
+第 03 章把 CLI 默认入口改成 Claude Code 式交互会话，并让会话默认流式输出。第 04 章才加入文件工具，并且先独立实现，不急着交给 Agent。
 
 ### 04 → 05：工具交给 Agent
 
@@ -90,10 +90,10 @@ src/
 ```text
 src/
   main.ts
-  config/env.ts
-  models/chat.ts
-  prompts/system.ts
-  chains/ask.ts
+  config/index.ts
+  model/chat.ts
+  model/AskChain.ts
+  model/prompts/system.ts
   utils/input.ts
 ```
 
@@ -103,9 +103,7 @@ src/
 src/
   agents/task-agent.ts
   tools/
-  models/
-  prompts/
-  chains/
+  model/
   main.ts
 ```
 
