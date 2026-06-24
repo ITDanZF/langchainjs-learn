@@ -1,5 +1,5 @@
 import { ChatOpenAI } from "@langchain/openai";
-import { env } from "../config/index.ts";
+import { env } from "../config/index.js";
 
 export function createChatModel() {
   return new ChatOpenAI({
