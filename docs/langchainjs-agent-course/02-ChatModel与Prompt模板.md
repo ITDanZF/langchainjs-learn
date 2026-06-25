@@ -8,6 +8,7 @@
 
 ```text
 src/config/env.ts
+src/config/home.ts
 src/models/chat.ts
 src/prompts/system.ts
 src/chains/ask.ts
@@ -43,6 +44,7 @@ DEEPSEEK_API_KEY=
 DEEPSEEK_MODEL=deepseek-chat
 DEEPSEEK_BASE_URL=https://api.deepseek.com
 AGENT_WORKSPACE=.
+MINI_AGENT_HOME=
 LOG_LEVEL=info
 ```
 
@@ -58,7 +60,11 @@ cp .env.example .env
 DEEPSEEK_API_KEY=你的 key
 ```
 
-`AGENT_WORKSPACE` 和 `LOG_LEVEL` 暂时不会在本章发挥明显作用，但第 04 章文件工具和第 10 章日志模块会复用这份配置。
+`AGENT_WORKSPACE` 表示当前 Agent 可以观察和操作的项目目录。`MINI_AGENT_HOME` 表示 mini-agent 自己的本地状态目录，类似 Codex 的 `%USERPROFILE%\.codex`。如果不配置，程序会默认使用用户目录下的 `.mini-agent`。
+
+`MINI_AGENT_HOME=` 留空即可使用默认值。如果用户希望把配置、历史、会话和缓存放到其他磁盘，可以显式配置，例如 `MINI_AGENT_HOME=D:\mini-agent-home`。
+
+`AGENT_WORKSPACE`、`MINI_AGENT_HOME` 和 `LOG_LEVEL` 暂时不会在本章发挥明显作用，但后续文件工具、会话历史、日志模块和缓存都会复用这些配置。
 
 ## 2. 配置模块
 
@@ -73,6 +79,7 @@ const EnvSchema = z.object({
   DEEPSEEK_MODEL: z.string().default("deepseek-chat"),
   DEEPSEEK_BASE_URL: z.string().url().default("https://api.deepseek.com"),
   AGENT_WORKSPACE: z.string().default("."),
+  MINI_AGENT_HOME: z.string().optional(),
   LOG_LEVEL: z.enum(["debug", "info", "warn", "error"]).default("info"),
 });
 
@@ -81,7 +88,89 @@ export const env = EnvSchema.parse(process.env);
 
 配置从这一章开始集中校验。后续模块只导入 `env`，不要在业务代码里到处读取 `process.env`。
 
-## 3. 模型封装
+## 3. 本地状态目录
+
+Codex 第一次运行后会在用户目录下创建 `.codex`，用于保存全局配置、认证、历史、会话、日志和缓存。`mini-agent-langchain` 也可以采用同样的思路，但使用自己的目录名，避免和其他工具混在一起。
+
+这个路径由程序生成：优先读取 `MINI_AGENT_HOME`，如果用户没有配置，就使用 `path.join(homedir(), ".mini-agent")`。
+
+推荐目录：
+
+```text
+Windows:
+C:\Users\<你>\.mini-agent
+
+macOS / Linux:
+~/.mini-agent
+```
+
+创建 `src/config/home.ts`：
+
+```ts
+import { mkdir } from "node:fs/promises";
+import { homedir } from "node:os";
+import path from "node:path";
+import { env } from "./env.js";
+
+export function getAgentHome() {
+  return env.MINI_AGENT_HOME || path.join(homedir(), ".mini-agent");
+}
+
+export async function ensureAgentHome() {
+  const home = getAgentHome();
+
+  await mkdir(home, { recursive: true });
+  await mkdir(path.join(home, "sessions"), { recursive: true });
+  await mkdir(path.join(home, "logs"), { recursive: true });
+  await mkdir(path.join(home, "cache"), { recursive: true });
+  await mkdir(path.join(home, "skills"), { recursive: true });
+  await mkdir(path.join(home, "plugins"), { recursive: true });
+
+  return home;
+}
+```
+
+第一次运行 CLI 时，调用 `ensureAgentHome()`，程序就会自动创建：
+
+```text
+~/.mini-agent/
+  sessions/
+  logs/
+  cache/
+  skills/
+  plugins/
+```
+
+后续可以继续在这个目录里放：
+
+```text
+config.toml       # 全局配置
+auth.json         # 认证信息，不提交 git
+history.jsonl     # 命令历史
+```
+
+注意区分两个目录：
+
+| 目录 | 作用 |
+| --- | --- |
+| `AGENT_WORKSPACE` | Agent 当前处理的项目目录，例如 `E:\workspace\agent-tui` |
+| `MINI_AGENT_HOME` | mini-agent 自己的本地状态目录，例如 `%USERPROFILE%\.mini-agent` |
+
+在 `src/main.ts` 的启动流程中尽早调用：
+
+```ts
+import { ensureAgentHome } from "./config/home.js";
+
+async function main() {
+  await ensureAgentHome();
+
+  // commander 初始化和命令注册...
+}
+```
+
+这样配置、缓存、历史和会话就有了统一落点。后续实现 `config`、`session`、`history` 等命令时，都不要散落写入项目源码目录，而是优先写入 `MINI_AGENT_HOME`。
+
+## 4. 模型封装
 
 创建 `src/models/chat.ts`：
 
@@ -102,7 +191,7 @@ export function createChatModel() {
 
 这里使用 `ChatOpenAI` 是因为 DeepSeek 提供 OpenAI 兼容接口。后续如果换模型，只需要替换这个模块。
 
-## 4. 系统 Prompt
+## 5. 系统 Prompt
 
 创建 `src/prompts/system.ts`：
 
@@ -121,7 +210,7 @@ export const baseSystemPrompt = `
 
 企业级 Prompt 的重点不是“人设”，而是行为边界。
 
-## 5. Ask Chain
+## 6. Ask Chain
 
 创建 `src/chains/ask.ts`：
 
@@ -150,7 +239,7 @@ export async function ask(input: string) {
 input → prompt → chat model → AIMessage
 ```
 
-## 6. 接入 CLI
+## 7. 接入 CLI
 
 修改 `src/main.ts` 的 `ask` 命令：
 
@@ -173,7 +262,7 @@ program
 
 这里复用第 01 章已经创建的 `joinArgs()` 和 `ensureInput()`。
 
-## 7. 验收
+## 8. 验收
 
 ```bash
 npm run dev -- ask "用一句话解释 LangChain.js Agent"
@@ -181,7 +270,7 @@ npm run dev -- ask "用一句话解释 LangChain.js Agent"
 
 如果 `.env` 配置正确，你会得到模型回答。
 
-## 8. 本章暂不做什么
+## 9. 本章暂不做什么
 
 本章只解决单次问答，不做：
 
@@ -190,13 +279,14 @@ npm run dev -- ask "用一句话解释 LangChain.js Agent"
 - `run` 命令：第 05 章再做。
 - LangGraph：第 06 章再做。
 
-## 9. 企业级思考
+## 10. 企业级思考
 
 现在代码很少，但已经埋下了企业项目的关键边界：
 
 - `models/` 负责模型供应商适配。
 - `prompts/` 负责行为规则。
 - `chains/` 负责可复用调用链。
+- `config/home.ts` 负责本地状态目录，避免历史、缓存、会话散落在项目里。
 - `main.ts` 只负责命令解析，不直接写模型逻辑。
 
 下一章会把一次性输出改为流式输出，提升 CLI 体验。

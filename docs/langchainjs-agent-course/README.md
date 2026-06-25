@@ -51,6 +51,7 @@ v1.x 继续升级规划、审批、编辑、多 Agent、服务化和插件
 | 01 | [项目初始化](./01-LangChain.js定位与安装.md) | 只实现最小 TypeScript CLI 和 `ask` 占位 |
 | 02 | [模型与 Prompt](./02-ChatModel与Prompt模板.md) | 首次接入模型、配置和 Prompt，实现真实 `ask` |
 | 03 | [Runnable 与流式输出](./03-Runnable与LCEL管道.md) | 默认进入 `chatAgent` 交互会话，并支持流式输出 |
+| 03b | [工作目录与本地状态目录](./03b-工作目录与本地状态目录.md) | 定义 `AGENT_WORKSPACE` 和 `MINI_AGENT_HOME` 的边界 |
 | 04 | [工具系统](./04-Tools与结构化输出.md) | 增加文件、目录、搜索工具，但先不交给 Agent |
 | 05 | [Agent 任务执行](./05-基于createReactAgent的工具智能体.md) | 新增 `run`，让模型自动选择工具 |
 | 06 | [LangGraph 状态机](./06-LangGraph状态图与可控循环.md) | 首次引入 LangGraph，把运行循环显式化 |

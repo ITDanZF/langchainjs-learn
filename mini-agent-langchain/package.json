@@ -15,6 +15,7 @@
   ],
   "scripts": {
     "dev": "tsx src/main.ts",
+    "chatx": "tsx src/main.ts",
     "build": "tsc",
     "start": "node dist/main.js",
     "test": "vitest run",

@@ -7,11 +7,16 @@
 完成后项目会新增：
 
 ```text
-src/utils/workspace.ts
 src/tools/list-files.ts
 src/tools/read-file.ts
 src/tools/search-text.ts
 src/tools/index.ts
+```
+
+进入本章前，先确认第 03b 章已经创建：
+
+```text
+src/tools/workspace/path.ts
 ```
 
 这些工具暂时还不会自动被模型调用，下一章会交给 Agent 使用。
@@ -27,22 +32,23 @@ src/tools/index.ts
 - 是否允许访问工作区外部。
 - 出错时返回什么。
 
-本章先实现本地文件工具，并强制限制在 `AGENT_WORKSPACE` 内。
+本章先实现本地文件工具，并强制限制在第 03b 章定义的 `AGENT_WORKSPACE` 内。
 
-## 2. 工作区路径工具
+## 2. 复用工作区路径工具
 
-创建 `src/utils/workspace.ts`：
+第 03b 章已经创建 `src/tools/workspace/path.ts`：
 
 ```ts
 import path from "node:path";
-import { env } from "../config/env.js";
+import { env } from "../../config/index.js";
 
 export const workspaceRoot = path.resolve(env.AGENT_WORKSPACE);
 
 export function resolveWorkspacePath(inputPath: string) {
   const resolvedPath = path.resolve(workspaceRoot, inputPath);
+  const relativePath = path.relative(workspaceRoot, resolvedPath);
 
-  if (!resolvedPath.startsWith(workspaceRoot)) {
+  if (relativePath.startsWith("..") || path.isAbsolute(relativePath)) {
     throw new Error(`Path is outside workspace: ${inputPath}`);
   }
 
@@ -50,7 +56,7 @@ export function resolveWorkspacePath(inputPath: string) {
 }
 
 export function toWorkspaceRelativePath(fullPath: string) {
-  return path.relative(workspaceRoot, fullPath);
+  return path.relative(workspaceRoot, fullPath) || ".";
 }
 ```
 
@@ -64,7 +70,7 @@ export function toWorkspaceRelativePath(fullPath: string) {
 import { tool } from "@langchain/core/tools";
 import { readdir } from "node:fs/promises";
 import { z } from "zod";
-import { resolveWorkspacePath } from "../utils/workspace.js";
+import { resolveWorkspacePath } from "./workspace/path.js";
 
 export const listFilesTool = tool(
   async ({ path }) => {
@@ -93,7 +99,7 @@ export const listFilesTool = tool(
 import { tool } from "@langchain/core/tools";
 import { readFile } from "node:fs/promises";
 import { z } from "zod";
-import { resolveWorkspacePath } from "../utils/workspace.js";
+import { resolveWorkspacePath } from "./workspace/path.js";
 
 const MAX_FILE_CHARS = 12000;
 
@@ -130,7 +136,7 @@ import { tool } from "@langchain/core/tools";
 import { readdir, readFile } from "node:fs/promises";
 import path from "node:path";
 import { z } from "zod";
-import { resolveWorkspacePath, toWorkspaceRelativePath } from "../utils/workspace.js";
+import { resolveWorkspacePath, toWorkspaceRelativePath } from "./workspace/path.js";
 
 const ignoredDirs = new Set(["node_modules", ".git", "dist", ".agent-index"]);
 

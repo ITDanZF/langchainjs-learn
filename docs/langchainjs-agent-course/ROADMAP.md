@@ -15,6 +15,7 @@
 | v0.1 | 01 | `ask` 占位 CLI | `commander`、`tsx`、`typescript` | 只有 `src/main.ts` 和输入工具 |
 | v0.2 | 02 | 真实模型回答 | `@langchain/openai`、`@langchain/core`、`dotenv`、`zod` | 新增 `config/` 和 `model/` |
 | v0.3 | 03 | 默认交互会话与流式输出 | 无 | 新增 `cli/chat-loop.ts` 和 `utils/stream.ts`，CLI 默认入口改为 `chatAgent` |
+| v0.3b | 03b | 工作目录边界 | 无 | 明确 `AGENT_WORKSPACE` 和 `MINI_AGENT_HOME`，新增 `tools/workspace/path.ts` |
 | v0.4 | 04 | 文件工具 | 无 | 新增 `tools/` 和工作区路径边界 |
 | v0.5 | 05 | `run` 工具 Agent | `langchain` | 新增 `agents/`，模型开始主动使用工具 |
 | v0.6 | 06 | LangGraph 运行时 | `@langchain/langgraph` | 新增 `graph/`，把循环从黑盒变成状态机 |
@@ -29,9 +30,9 @@
 
 第 01 章只证明 CLI 能接收输入。第 02 章第一次需要模型，因此才引入 `.env`、配置校验、模型封装和 Prompt。
 
-### 03 → 04：先改善交互体验，再增加行动能力
+### 03 → 03b → 04：先定义边界，再增加行动能力
 
-第 03 章把 CLI 默认入口改成 Claude Code 式交互会话，并让会话默认流式输出。第 04 章才加入文件工具，并且先独立实现，不急着交给 Agent。
+第 03 章把 CLI 默认入口改成 Claude Code 式交互会话，并让会话默认流式输出。第 03b 章先定义 `AGENT_WORKSPACE`，说明 Agent 可以访问哪个项目目录，以及它和 `MINI_AGENT_HOME` 的区别。第 04 章再加入文件工具，并且先独立实现，不急着交给 Agent。
 
 ### 04 → 05：工具交给 Agent
 
