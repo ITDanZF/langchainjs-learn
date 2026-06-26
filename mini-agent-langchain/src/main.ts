@@ -1,35 +1,23 @@
 #!/usr/bin/env node
+import { ask, streamAsk } from './model/AskChain.js';
+import { PrintStream } from './utils/Print.js';
+import { createAgentWorkSpace, createHomeRoot } from './workspace/path.js';
+import CLI from './cli/index.js';
 
-import { Command } from "commander";
-import { ask, streamAsk } from "./model/AskChain.js";
-import ChatLoop from "./utils/ChatLoop.js";
-import { PrintStream } from "./utils/Print.js";
-import {
-  createAgentWorkSpace,
-  createHomeRoot,
-  getAgentHome,
-} from "./workspace/path.js";
 async function main() {
-  const program = new Command();
-  program.name("mini-agent");
-  program.description("A mini Agent CLI built step by step with LangChain.js");
-  program.version("0.1.0");
+    // 创建工作目录
+    await createHomeRoot();
+    const workSpacePath = await createAgentWorkSpace();
 
-  // 创建工作目录
-  await createHomeRoot();
-  const workSpacePath = await createAgentWorkSpace();
-  console.log("创建工作目录：", workSpacePath);
-  program.action(async () => {
-    await ChatLoop({
-      handleInput: async (input: string) => {
+    const cli = new CLI();
+
+    await cli.run(process.argv, async (input: string) => {
         const stream = await streamAsk(input);
         await PrintStream(stream);
-      },
     });
-  });
-  await program.parseAsync(process.argv);
-
-  console.log(getAgentHome());
 }
 
-main();
+main().catch((error) => {
+    console.error('程序启动失败：', error);
+    process.exitCode = 1;
+});
