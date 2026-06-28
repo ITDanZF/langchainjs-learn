@@ -2,7 +2,7 @@
 import { ask, streamAsk } from './model/AskChain.ts';
 import { PrintStream } from './utils/Print.ts';
 import { createAgentWorkSpace, createHomeRoot } from './workspace/path.ts';
-import CLI from './cli/index.js';
+import CLI from './cli/index.ts';
 import Bootstrap from './bootstrap/index.ts';
 
 async function main() {
@@ -11,10 +11,10 @@ async function main() {
 
     await bootstrap.setup();
 
-    // await cli.run(process.argv, async (input: string) => {
-    //   const stream = await streamAsk(input);
-    //   await PrintStream(stream);
-    // });
+    await cli.run(process.argv, async (input: string) => {
+        const stream = await streamAsk(input);
+        await PrintStream(stream);
+    });
 }
 
 main().catch((error) => {
