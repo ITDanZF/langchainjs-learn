@@ -1,6 +1,6 @@
 import { ChatPromptTemplate } from '@langchain/core/prompts';
-import { baseSystemPrompt } from './prompts/system.js';
-import { createChatModel } from './chat.js';
+import { baseSystemPrompt } from './prompts/system.ts';
+import { createChatModel } from './chat.ts';
 
 const prompt = ChatPromptTemplate.fromMessages([
     ['system', baseSystemPrompt],
