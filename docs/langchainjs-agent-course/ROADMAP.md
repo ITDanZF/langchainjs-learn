@@ -1,123 +1,132 @@
-# mini-agent-langchain 渐进式主线导图
+# mini-agent-langchain 主线导图
 
-这份导图说明 01-22 章如何从一个能跑的小 CLI，逐步演进成企业 Agent 平台雏形。
+这份导图说明课程如何从当前代码状态继续演进。核心原则是：先让当前 CLI 具备真实 Agent 的最小能力，再逐步进入 LangGraph、工具、RAG 和多 Agent。
 
-## 一句话主线
+## 当前检查点
+
+当前项目已经完成：
 
 ```text
-先做一个能运行的小功能，再为真实痛点增加一个模块；架构不是预先铺满，而是在每次迭代后变得更清楚。
+配置初始化
+  ~/.mini-agent/config.json
+
+工作目录初始化
+  ~/.mini-agent/logs
+  ~/.mini-agent/sessions
+  AGENT_WORKSPACE 或默认 workspace
+
+模型封装
+  ChatOpenAI
+  ChatPromptTemplate
+  stream / invoke
+
+CLI 交互
+  commander
+  readline
+  PrintStream
+
+Agent 管理雏形
+  AgentRuntime
+  AgentModel
+  active agent
+```
+
+还没有完成：
+
+```text
+短期记忆
+thread_id
+session 落盘
+LangGraph StateGraph
+工具调用
+RAG
+长期记忆
+多 Agent
 ```
 
 ## 版本演进
 
-| 版本 | 章节 | 新增能力 | 新增依赖 | 架构变化 |
-| --- | --- | --- | --- | --- |
-| v0.1 | 01 | `ask` 占位 CLI | `commander`、`tsx`、`typescript` | 只有 `src/main.ts` 和输入工具 |
-| v0.2 | 02 | 真实模型回答 | `@langchain/openai`、`@langchain/core`、`dotenv`、`zod` | 新增 `config/` 和 `model/` |
-| v0.3 | 03 | 默认交互会话与流式输出 | 无 | 新增 `cli/chat-loop.ts` 和 `utils/stream.ts`，CLI 默认入口改为 `chatAgent` |
-| v0.3b | 03b | 工作目录边界 | 无 | 明确 `AGENT_WORKSPACE` 和 `MINI_AGENT_HOME`，新增 `tools/workspace/path.ts` |
-| v0.4 | 04 | 文件工具 | 无 | 新增 `tools/` 和工作区路径边界 |
-| v0.5 | 05 | `run` 工具 Agent | `langchain` | 新增 `agents/`，模型开始主动使用工具 |
-| v0.6 | 06 | LangGraph 运行时 | `@langchain/langgraph` | 新增 `graph/`，把循环从黑盒变成状态机 |
-| v0.7 | 07 | 交互会话加入 thread 和记忆 | 无或检查点相关依赖 | 新增 `memory/`，默认会话从无记忆升级为多轮上下文 |
-| v0.8 | 08 | 本地 RAG | 向量库和文档加载相关依赖 | 新增 `rag/` 和 `index` 命令 |
-| v0.9 | 09-12 | 权限、工程化、评估、综合验收 | 按章节需要引入 | 补齐日志、错误、测试、eval |
-| v1.x | 13-22 | 规划、审批、编辑、多 Agent、服务化、插件 | 按能力引入 | 从 CLI 项目继续演进为平台雏形 |
+| 版本 | 目标 | 关键文件 | 说明 |
+| --- | --- | --- | --- |
+| v0.1 | CLI 能启动 | `main.ts`、`cli/` | 能进入交互循环 |
+| v0.2 | 模型能回复 | `model/`、`config/` | 配置来自用户输入和配置文件 |
+| v0.3 | 流式多轮输入 | `PrintStream`、`CLI.CLILoop` | 多轮输入但还没有记忆 |
+| v0.4 | 进程内短期记忆 | `Memory/index.ts`、`main.ts` | 保存当前 thread 的 messages |
+| v0.5 | session 落盘 | `workspace/`、`sessions/` | 用 jsonl 保存会话历史 |
+| v0.6 | LangGraph 线程持久化 | `graph/`、`MemorySaver` | 用 checkpointer 管理 thread state |
+| v0.7 | 工具调用 | `tools/`、agent loop | 让模型能决定是否使用工具 |
+| v0.8 | RAG | `rag/` | 本地文档检索和引用 |
+| v0.9 | 长期记忆 | `store` 或 memory 文件 | 保存跨会话用户偏好和项目事实 |
+| v1.x | 企业增强 | 多 Agent、审批、服务化、权限 | 从 CLI 演进到平台能力 |
 
-## 关键节奏
+## 记忆主线
 
-### 01 → 02：从命令壳到模型调用
-
-第 01 章只证明 CLI 能接收输入。第 02 章第一次需要模型，因此才引入 `.env`、配置校验、模型封装和 Prompt。
-
-### 03 → 03b → 04：先定义边界，再增加行动能力
-
-第 03 章把 CLI 默认入口改成 Claude Code 式交互会话，并让会话默认流式输出。第 03b 章先定义 `AGENT_WORKSPACE`，说明 Agent 可以访问哪个项目目录，以及它和 `MINI_AGENT_HOME` 的区别。第 04 章再加入文件工具，并且先独立实现，不急着交给 Agent。
-
-### 04 → 05：工具交给 Agent
-
-第 04 章的工具只是普通能力模块。第 05 章新增 `run` 命令，把工具交给模型自动选择，项目第一次具备任务执行能力。
-
-### 05 → 06：黑盒 Agent 变成可控 Graph
-
-第 05 章用 `createAgent()` 快速跑通。第 06 章才引入 LangGraph，因为此时已经有了真实痛点：需要控制工具循环、权限分支、中断和审计。
-
-### 08 → 16：最小 RAG 升级为知识库治理
-
-第 08 章先让 Markdown 可索引、可检索。第 16 章再补增量索引、元数据、混合检索、权限过滤和引用治理。
-
-### 09 → 14：权限信号升级为审批流程
-
-第 09 章只做权限雏形，遇到高风险命令返回信号。第 14 章再把它接入 Human-in-the-loop 审批节点。
-
-## 推荐学习路径
-
-稳扎稳打：
+记忆能力不要一步到位。推荐顺序：
 
 ```text
-01 → 02 → 03 → 04 → 05 → 06 → 07 → 08 → 09 → 10 → 11 → 12
+1. 当前进程内 messages[]
+2. thread_id 隔离不同对话
+3. sessions/<thread-id>.jsonl 落盘
+4. LangGraph MemorySaver
+5. Postgres/MongoDB checkpointer
+6. LangGraph store
+7. 语义搜索长期记忆
 ```
 
-开发助手方向：
+## 短期记忆与长期记忆边界
+
+| 类型 | 解决的问题 | 示例 | 推荐实现阶段 |
+| --- | --- | --- | --- |
+| 短期记忆 | 当前 thread 里刚才说了什么 | messages、工具结果、当前任务状态 | 先做 |
+| session 持久化 | CLI 退出后能恢复对话 | jsonl 会话文件 | 短期记忆之后 |
+| LangGraph checkpointer | 图状态按 thread 保存 | `MemorySaver`、PostgresSaver | 引入 graph 后 |
+| 长期记忆 | 新会话也要知道什么 | 用户偏好、项目约定、稳定事实 | 短期记忆稳定后 |
+| RAG | 外部知识库问答 | docs、FAQ、制度文档 | 工具和记忆之后 |
+
+## 为什么不马上做长期记忆
+
+长期记忆涉及写入策略、检索策略、删除策略、隐私和过期问题。如果短期记忆还没跑通，直接做长期记忆很容易把问题混在一起。
+
+当前最重要的验收是：
 
 ```text
-01-12 → 13 → 14 → 15 → 18
+> 我叫张三
+> 我刚才说我叫什么？
 ```
 
-企业知识库方向：
+同一个 thread 中，Agent 能回答“张三”。不同 thread 中，Agent 不应该知道。
+
+## 官方资料路线
 
 ```text
-01-12 → 16 → 17 → 20
+LangChain.js Overview
+  ↓
+LangGraph Memory
+  ↓
+LangGraph Persistence
+  ↓
+LangChain trimMessages
+  ↓
+长期记忆 store / semantic search
 ```
 
-平台方向：
+对应官方文档：
+
+- https://docs.langchain.com/oss/javascript/langchain/overview
+- https://docs.langchain.com/oss/javascript/langgraph/add-memory
+- https://docs.langchain.com/oss/javascript/langgraph/persistence
+- https://js.langchain.com/docs/how_to/trim_messages/
+
+## 当前下一步
+
+下一步不要急着改成复杂 LangGraph。建议先在 `src/Memory/index.ts` 中实现最小短期记忆：
 
 ```text
-01-12 → 13 → 14 → 17 → 18 → 19 → 20 → 21 → 22
+Memory
+  addUserMessage(threadId, content)
+  addAssistantMessage(threadId, content)
+  getMessages(threadId)
+  clear(threadId)
 ```
 
-## 架构快照
-
-开始时：
-
-```text
-src/
-  main.ts
-  utils/input.ts
-```
-
-接入模型后：
-
-```text
-src/
-  main.ts
-  config/index.ts
-  model/chat.ts
-  model/AskChain.ts
-  model/prompts/system.ts
-  utils/input.ts
-```
-
-具备 Agent 执行后：
-
-```text
-src/
-  agents/task-agent.ts
-  tools/
-  model/
-  main.ts
-```
-
-引入可控运行时后：
-
-```text
-src/
-  graph/task-graph.ts
-  agents/
-  tools/
-  memory/
-  rag/
-  observability/
-```
-
-这些快照不是一次性创建清单，而是每个阶段完成后的自然结果。
+等这个模型跑通，再把它替换或升级为 LangGraph checkpointer。

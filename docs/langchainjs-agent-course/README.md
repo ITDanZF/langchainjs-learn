@@ -1,80 +1,91 @@
 # mini-agent-langchain 渐进式 Agent CLI 教程
 
-> 从一个空的 `mini-agent-langchain` 文件夹开始，每一章只实现一个可运行的小能力，让项目架构随着需求自然演进，而不是第一天就搭出完整企业架构。
+> 从当前 `mini-agent-langchain` 项目出发，每一章只推进一个可运行的小能力，让架构随着学习和真实需求自然演进。
 
-## 课程定位
+## 当前项目状态
 
-本教程只围绕一个项目展开：`mini-agent-langchain`。
+截至本轮课程更新，`mini-agent-langchain` 已经具备这些基础能力：
 
-课程采用“可运行增量”的节奏：
+- `Bootstrap`：负责初始化 `~/.mini-agent`、读取或引导生成 `config.json`。
+- `Configuration`：从用户配置文件加载模型配置，并写入运行时环境。
+- `WorkSpace`：创建 agent home、sessions、logs 和工作目录。
+- `CLI`：默认进入交互式命令行循环，支持 `/exit`、`/quit`、`q`、`退出`。
+- `Model`：基于 LangChain `ChatOpenAI` 和 `ChatPromptTemplate` 封装 `invoke` / `stream`。
+- `AgentModel`：管理一个默认 `AgentRuntime`，为后续多 Agent 扩展预留位置。
+- `Memory`：目前还是空类，正好作为下一步“短期记忆”学习入口。
 
-```text
-v0.1 只有 CLI 壳子
-  ↓
-v0.2 接入真实模型
-  ↓
-v0.3 默认进入交互会话并支持流式输出
-  ↓
-v0.4 加入本地文件工具
-  ↓
-v0.5 让 Agent 自动调用工具
-  ↓
-v0.6 用 LangGraph 显式控制运行循环
-  ↓
-v0.7 加入会话记忆
-  ↓
-v0.8 加入 RAG 知识库
-  ↓
-v0.9 补权限、日志、测试、评估
-  ↓
-v1.x 继续升级规划、审批、编辑、多 Agent、服务化和插件
-```
-
-每一章都必须回答三个问题：
-
-- 这一章为什么现在需要这个能力？
-- 这一章只新增哪些文件、依赖和命令？
-- 完成后用什么命令证明它能跑？
+这意味着课程不再从完全空项目开始，而是从“已经能配置、启动、流式对话的 Agent CLI 雏形”继续推进。
 
 ## 学习原则
 
-- 只在真正用到时安装依赖。例如第 01 章不安装 LangGraph，第 06 章才安装。
-- 只创建当前阶段需要的目录。例如第 01 章不提前创建 `rag/`、`graph/`、`evals/`。
-- 只暴露已经实现的命令。例如第 01 章只做 `ask` 占位，不提前写 `run`、`chat` 空壳。
-- 每章结束都留下一个可以运行、可以理解、可以继续修改的小版本。
+- 不把所有企业级目录一次性搭出来。
+- 不急着把 LangGraph、RAG、多 Agent、插件化全部塞进主线。
+- 当前项目需要什么能力，就补什么模块。
+- 每一章结束都要能用一个清晰命令验收。
+- 概念学习必须落回 `mini-agent-langchain` 当前代码结构。
 
 ## 章节目录
 
 | 章节 | 文档 | 本章增量 |
 | --- | --- | --- |
-| 00 | [课程总览](./00-进阶课程总览.md) | 明确渐进式学习方式和版本路线 |
-| 01 | [项目初始化](./01-LangChain.js定位与安装.md) | 只实现最小 TypeScript CLI 和 `ask` 占位 |
-| 02 | [模型与 Prompt](./02-ChatModel与Prompt模板.md) | 首次接入模型、配置和 Prompt，实现真实 `ask` |
-| 03 | [Runnable 与流式输出](./03-Runnable与LCEL管道.md) | 默认进入 `chatAgent` 交互会话，并支持流式输出 |
-| 03b | [工作目录与本地状态目录](./03b-工作目录与本地状态目录.md) | 定义 `AGENT_WORKSPACE` 和 `MINI_AGENT_HOME` 的边界 |
-| 04 | [工具系统](./04-Tools与结构化输出.md) | 增加文件、目录、搜索工具，但先不交给 Agent |
-| 05 | [Agent 任务执行](./05-基于createReactAgent的工具智能体.md) | 新增 `run`，让模型自动选择工具 |
-| 06 | [LangGraph 状态机](./06-LangGraph状态图与可控循环.md) | 首次引入 LangGraph，把运行循环显式化 |
-| 07 | [会话记忆](./07-记忆检查点与多轮会话.md) | 升级默认交互会话，加入 thread 和记忆 |
-| 08 | [本地知识库 RAG](./08-RAG知识库问答应用.md) | 新增 `index` 和 `search_docs` |
+| 00 | [课程总览](./00-进阶课程总览.md) | 说明当前代码状态和后续演进路线 |
+| 01 | [项目初始化](./01-LangChain.js定位与安装.md) | 最小 TypeScript CLI 和基础脚本 |
+| 02 | [模型与 Prompt](./02-ChatModel与Prompt模板.md) | 接入模型、配置和 Prompt |
+| 03 | [Runnable 与流式输出](./03-Runnable与LCEL管道.md) | 理解 Runnable、pipe、stream |
+| 03b | [工作目录与本地状态目录](./03b-工作目录与本地状态目录.md) | 定义 agent home、sessions、workspace 边界 |
+| 04 | [工具系统](./04-Tools与结构化输出.md) | 增加工具抽象和结构化输入输出 |
+| 05 | [Agent 任务执行](./05-基于createReactAgent的工具智能体.md) | 让模型根据任务选择工具 |
+| 06 | [LangGraph 状态机](./06-LangGraph状态图与可控循环.md) | 学习显式状态图和可控循环 |
+| 07 | [会话记忆](./07-记忆检查点与多轮会话.md) | 基于当前代码实现第一版短期记忆 |
+| 07a | [LangGraph 记忆官方教程解读](./07a-LangGraph记忆官方教程解读.md) | 学习官方 short-term / long-term memory 设计 |
+| 08 | [本地知识库 RAG](./08-RAG知识库问答应用.md) | 新增本地文档检索 |
 | 09 | [企业工具箱与权限](./09-多工具业务助手.md) | 增加受限命令工具和权限雏形 |
 | 10 | [工程化](./10-复杂应用工程化.md) | 补日志、错误、测试和模块边界 |
-| 11 | [评估观测部署](./11-评估观测与部署.md) | 新增 `eval`、观测和发布建议 |
-| 12 | [综合项目](./12-综合项目企业知识库与工单助手.md) | 对 01-11 的能力做一次综合验收 |
-| 13 | [规划器与任务分解](./13-规划器与任务分解.md) | 在已有 Graph 上加入规划能力 |
-| 14 | [Human-in-the-loop 审批](./14-Human-in-the-loop审批.md) | 把权限信号升级成审批节点 |
-| 15 | [代码编辑与补丁工作流](./15-代码编辑与补丁工作流.md) | 在工具体系上加入安全 patch 工作流 |
-| 16 | [高级 RAG 与知识库治理](./16-高级RAG与知识库治理.md) | 把第 08 章的本地 RAG 升级为知识库治理 |
-| 17 | [多模型路由与成本控制](./17-多模型路由与成本控制.md) | 在模型封装层加入路由和成本策略 |
-| 18 | [多 Agent 协作](./18-多Agent协作.md) | 在规划、执行、审查之间拆分职责 |
-| 19 | [服务化 API 与队列](./19-服务化API与队列.md) | 把 CLI 背后的核心能力服务化 |
-| 20 | [安全合规与权限体系](./20-安全合规与权限体系.md) | 系统化补权限、审计和防注入 |
-| 21 | [插件化工具生态](./21-插件化工具生态.md) | 让工具体系可扩展、可治理 |
-| 22 | [最终企业架构蓝图](./22-最终企业架构蓝图.md) | 回看项目如何从 CLI 演进到 Agent 平台 |
+| 11 | [评估观测部署](./11-评估观测与部署.md) | 新增评估、观测和发布建议 |
+| 12 | [综合项目](./12-综合项目企业知识库与工单助手.md) | 对 01-11 的能力做综合验收 |
+| 13-22 | 后续进阶章节 | 规划、审批、代码编辑、多 Agent、服务化、权限、插件和最终蓝图 |
 
-## 推荐阅读
+## 记忆学习路线
 
-- 想先看主线怎么串起来，读 [主线导图](./ROADMAP.md)。
-- 想马上动手，从 [01 项目初始化](./01-LangChain.js定位与安装.md) 开始。
+接下来最重要的是第 07 章和第 07a 章：
 
-这套教程的重点不是“展示一个完整架构”，而是训练你如何让架构从真实需求里长出来。
+```text
+当前 CLI 单轮流式对话
+  ↓
+进程内短期记忆：messages[]
+  ↓
+thread_id：区分多个会话
+  ↓
+session 文件：把短期记忆落盘
+  ↓
+LangGraph checkpointer：官方线程级持久化
+  ↓
+LangGraph store：长期记忆
+```
+
+先不要急着做向量数据库或自动记忆。当前项目的下一步应该是让用户在同一个 CLI 会话里问：
+
+```text
+> 我叫张三
+> 我刚才说我叫什么？
+```
+
+Agent 能回答出来。这就是记忆系统的第一块地基。
+
+## 官方资料
+
+- LangChain.js Overview: https://docs.langchain.com/oss/javascript/langchain/overview
+- LangGraph Memory: https://docs.langchain.com/oss/javascript/langgraph/add-memory
+- LangGraph Persistence: https://docs.langchain.com/oss/javascript/langgraph/persistence
+
+## 推荐阅读顺序
+
+```text
+00 课程总览
+→ 07 会话记忆
+→ 07a LangGraph 记忆官方教程解读
+→ 06 LangGraph 状态机
+→ 08 RAG 知识库
+```
+
+如果你当前目标是学习 Agent 记忆系统，可以先跳读 04-06，直接读 07 和 07a，再回头补 LangGraph 状态图。
