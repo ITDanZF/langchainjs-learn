@@ -2,7 +2,6 @@
 import { PrintStream } from "./utils/Print.ts";
 import CLI from "./cli/index.ts";
 import Bootstrap from "./bootstrap/index.ts";
-import { ask, streamAsk } from "./model/AskChain.ts";
 
 async function main() {
   const cli = new CLI();
@@ -10,10 +9,10 @@ async function main() {
 
   const runTime = await bootstrap.setup();
 
-  // await cli.run(process.argv, async (input: string) => {
-  //   const stream = await streamAsk(input);
-  //   await PrintStream(stream);
-  // });
+  await cli.run(process.argv, async (input: string) => {
+    const result = await runTime.AgentRuntime.model.stream(input);
+    await PrintStream(result);
+  });
 }
 
 main().catch((error) => {

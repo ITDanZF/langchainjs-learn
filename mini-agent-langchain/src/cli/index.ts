@@ -1,5 +1,4 @@
 import { Command } from 'commander';
-import type { Interface } from 'node:readline/promises';
 import { createInterface } from 'node:readline/promises';
 import { stdin as input, stdout as output } from 'node:process';
 import { PrintSysInfo } from './utils.ts';
@@ -8,7 +7,6 @@ type InputHandler = (input: string) => Promise<void> | void;
 
 export default class CLI {
     private program: Command;
-    private RL: Interface;
 
     private readonly name = 'mini-agent';
     private readonly description = 'A mini Agent CLI';
@@ -16,7 +14,6 @@ export default class CLI {
 
     constructor() {
         this.program = new Command();
-        this.RL = createInterface({ input, output });
 
         // default sys info
         this.program
@@ -43,9 +40,11 @@ export default class CLI {
      * 交互式命令行循环体
      */
     async CLILoop(handleInput: InputHandler) {
+        const rl = createInterface({ input, output });
+
         try {
             while (true) {
-                const line = (await this.RL.question('> ')).trim();
+                const line = (await rl.question('> ')).trim();
 
                 if (!line) continue;
 
@@ -63,7 +62,7 @@ export default class CLI {
                 }
             }
         } finally {
-            this.RL.close();
+            rl.close();
         }
     }
 
