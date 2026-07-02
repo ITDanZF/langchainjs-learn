@@ -4,9 +4,10 @@
 
 官方资料：
 
-- LangGraph Memory: https://docs.langchain.com/oss/javascript/langgraph/add-memory
-- LangGraph Persistence: https://docs.langchain.com/oss/javascript/langgraph/persistence
-- LangChain trimMessages: https://js.langchain.com/docs/how_to/trim_messages/
+- LangChain.js Short-term memory: https://docs.langchain.com/oss/javascript/langchain/short-term-memory
+- LangChain.js Long-term memory: https://docs.langchain.com/oss/javascript/langchain/long-term-memory
+- LangGraph Checkpointers: https://docs.langchain.com/oss/javascript/langgraph/checkpointers
+- LangGraph Stores: https://docs.langchain.com/oss/javascript/langgraph/stores
 
 ## 1. 官方把记忆分成两类
 

@@ -38,6 +38,13 @@
 | 06 | [LangGraph 状态机](./06-LangGraph状态图与可控循环.md) | 学习显式状态图和可控循环 |
 | 07 | [会话记忆](./07-记忆检查点与多轮会话.md) | 基于当前代码实现第一版短期记忆 |
 | 07a | [LangGraph 记忆官方教程解读](./07a-LangGraph记忆官方教程解读.md) | 学习官方 short-term / long-term memory 设计 |
+| 07b | [LangChain.js 短期记忆教程](./07b-LangChain.js短期记忆教程.md) | 对齐官方 createAgent + checkpointer，并映射回当前 Memory 实现 |
+| 07c | [LangChain.js 完整记忆体系](./07c-LangChain.js完整记忆体系.md) | 系统梳理 messages、checkpointer、store、middleware 的分层关系 |
+| 07d | [记忆 API 地图与选择指南](./07d-记忆API地图与选择指南.md) | 说明 MemorySaver、PostgresSaver、store、ToolRuntime 等 API 该怎么选 |
+| 07e | [短期记忆与中间件实战](./07e-短期记忆与中间件实战.md) | 深入短期记忆、trimMessages、RemoveMessage、summarizationMiddleware |
+| 07f | [长期记忆 Store 与生产持久化](./07f-长期记忆Store与生产持久化.md) | 讲解 namespace、key、store.put/get/search 和 PostgresStore |
+| 07g | [mini-agent 记忆迁移路线](./07g-mini-agent记忆迁移路线.md) | 把官方记忆体系落回当前项目的阶段化改造路线 |
+| 07h | [内存到磁盘到数据库的记忆实现路线](./07h-内存到磁盘到数据库的记忆实现路线.md) | 明确先内存短期记忆，再磁盘缓存，最后数据库和跨对话存储 |
 | 08 | [本地知识库 RAG](./08-RAG知识库问答应用.md) | 新增本地文档检索 |
 | 09 | [企业工具箱与权限](./09-多工具业务助手.md) | 增加受限命令工具和权限雏形 |
 | 10 | [工程化](./10-复杂应用工程化.md) | 补日志、错误、测试和模块边界 |
@@ -47,20 +54,22 @@
 
 ## 记忆学习路线
 
-接下来最重要的是第 07 章和第 07a 章：
+接下来最重要的是第 07 到 07h 章：
 
 ```text
 当前 CLI 单轮流式对话
   ↓
-进程内短期记忆：messages[]
+阶段 1：进程内短期记忆 messages[]
   ↓
 thread_id：区分多个会话
   ↓
-session 文件：把短期记忆落盘
+阶段 2：session 文件把短期记忆落盘
   ↓
-LangGraph checkpointer：官方线程级持久化
+阶段 3A：数据库 checkpointer 保存 thread state
   ↓
-LangGraph store：长期记忆
+阶段 3B：数据库 store 保存跨对话长期记忆
+  ↓
+middleware：裁剪、删除、摘要和动态 prompt
 ```
 
 先不要急着做向量数据库或自动记忆。当前项目的下一步应该是让用户在同一个 CLI 会话里问：
@@ -75,8 +84,10 @@ Agent 能回答出来。这就是记忆系统的第一块地基。
 ## 官方资料
 
 - LangChain.js Overview: https://docs.langchain.com/oss/javascript/langchain/overview
-- LangGraph Memory: https://docs.langchain.com/oss/javascript/langgraph/add-memory
-- LangGraph Persistence: https://docs.langchain.com/oss/javascript/langgraph/persistence
+- LangChain.js Short-term memory: https://docs.langchain.com/oss/javascript/langchain/short-term-memory
+- LangChain.js Long-term memory: https://docs.langchain.com/oss/javascript/langchain/long-term-memory
+- LangGraph Checkpointers: https://docs.langchain.com/oss/javascript/langgraph/checkpointers
+- LangGraph Stores: https://docs.langchain.com/oss/javascript/langgraph/stores
 
 ## 推荐阅读顺序
 
@@ -84,8 +95,15 @@ Agent 能回答出来。这就是记忆系统的第一块地基。
 00 课程总览
 → 07 会话记忆
 → 07a LangGraph 记忆官方教程解读
+→ 07b LangChain.js 短期记忆教程
+→ 07c LangChain.js 完整记忆体系
+→ 07d 记忆 API 地图与选择指南
+→ 07e 短期记忆与中间件实战
+→ 07f 长期记忆 Store 与生产持久化
+→ 07g mini-agent 记忆迁移路线
+→ 07h 内存到磁盘到数据库的记忆实现路线
 → 06 LangGraph 状态机
 → 08 RAG 知识库
 ```
 
-如果你当前目标是学习 Agent 记忆系统，可以先跳读 04-06，直接读 07 和 07a，再回头补 LangGraph 状态图。
+如果你当前目标是学习 Agent 记忆系统，可以先跳读 04-06，直接读 07 到 07h，再回头补 LangGraph 状态图。
