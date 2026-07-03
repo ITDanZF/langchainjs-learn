@@ -1,8 +1,8 @@
 #!/usr/bin/env node
-import { PrintStream } from "./utils/Print.ts";
 import CLI from "./cli/index.ts";
 import Bootstrap from "./bootstrap/index.ts";
 import Conversation from "./Memory/Conversation.ts";
+import SessionView from "./cli/SessionView.ts";
 
 async function main() {
   const cli = new CLI();
@@ -10,13 +10,19 @@ async function main() {
 
   const runTime = await bootstrap.setup();
   const conversation = new Conversation();
+  const sessionView = new SessionView();
+
+  sessionView.renderDashboard(conversation);
 
   await cli.run(process.argv, async (input: string) => {
+    sessionView.renderUserMessage(input);
+    sessionView.renderThinking();
+
     const result = await runTime.AgentRuntime.model.invoke(
       input,
       conversation.getActiveThreadId(),
     );
-    console.log(result.messages.at(-1)?.content);
+    sessionView.renderAgentResult(result);
   });
 }
 

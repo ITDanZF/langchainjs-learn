@@ -1,7 +1,6 @@
 import { Command } from 'commander';
 import { createInterface } from 'node:readline/promises';
 import { stdin as input, stdout as output } from 'node:process';
-import { PrintSysInfo } from './utils.ts';
 
 type InputHandler = (input: string) => Promise<void> | void;
 
@@ -71,9 +70,6 @@ export default class CLI {
      */
     private RegisterInteractiveCommand(handleInput: InputHandler) {
         this.program.action(async () => {
-            // 打印系统的初始信息
-            PrintSysInfo();
-
             // 开始系统命令循环
             await this.CLILoop(handleInput);
         });
