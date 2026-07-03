@@ -3,6 +3,7 @@ import CLI from "./cli/index.ts";
 import Bootstrap from "./bootstrap/index.ts";
 import Conversation from "./Memory/Conversation.ts";
 import SessionView from "./cli/SessionView.ts";
+import commandSet from "./cli/CommandSet.ts";
 
 async function main() {
   const cli = new CLI();
@@ -15,11 +16,20 @@ async function main() {
   sessionView.renderDashboard(conversation);
 
   await cli.run(process.argv, async (input: string) => {
-    sessionView.renderUserMessage(input);
+    const commandResult = await commandSet.execute(input, {
+      conversation,
+      sessionView,
+    });
+
+    if (commandResult.type === "stop") {
+      return;
+    }
+
+    sessionView.renderUserMessage(commandResult.input);
     sessionView.renderThinking();
 
     const result = await runTime.AgentRuntime.model.invoke(
-      input,
+      commandResult.input,
       conversation.getActiveThreadId(),
     );
     sessionView.renderAgentResult(result);
