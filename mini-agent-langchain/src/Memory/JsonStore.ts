@@ -1,5 +1,11 @@
 import path from "node:path";
-import { mkdirSync, existsSync, readFileSync, writeFileSync } from "node:fs";
+import {
+  mkdirSync,
+  existsSync,
+  readFileSync,
+  writeFileSync,
+  rmSync,
+} from "node:fs";
 import { getAgentHome } from "../workspace/path.ts";
 
 export type ThreadInfo = {
@@ -34,19 +40,24 @@ type JsonMessage = {
   createdAt: string;
 };
 
-type JsonStoreState = {
+type JsonIndexState = {
   threads: JsonThread[];
+};
+
+type JsonSessionState = {
+  threadId: string;
   messages: JsonMessage[];
 };
 
 export default class JsonStore {
-  private readonly filePath: string;
+  private readonly sessionsDir: string;
+  private readonly indexPath: string;
 
-  constructor(
-    filePath = path.join(getAgentHome(), "sessions", "history.json"),
-  ) {
-    this.filePath = filePath;
-    this.ensureFile();
+  constructor(sessionsDir = path.join(getAgentHome(), "sessions")) {
+    this.sessionsDir = sessionsDir;
+    this.indexPath = path.join(this.sessionsDir, "index.json");
+
+    this.ensureStore();
   }
 
   ensureDefaultThread(): ThreadInfo {
@@ -60,9 +71,13 @@ export default class JsonStore {
   }
 
   createThread(title: string, id: string = crypto.randomUUID()): ThreadInfo {
-    const state = this.readState();
-    const now = new Date().toISOString();
+    const index = this.readIndex();
 
+    if (index.threads.some((thread) => thread.id === id)) {
+      throw new Error(`Thread already exists: ${id}`);
+    }
+
+    const now = new Date().toISOString();
     const thread: JsonThread = {
       id,
       title,
@@ -70,31 +85,35 @@ export default class JsonStore {
       updatedAt: now,
     };
 
-    state.threads.push(thread);
-    this.writeState(state);
+    index.threads.push(thread);
+    this.writeIndex(index);
+    this.writeSession(id, {
+      threadId: id,
+      messages: [],
+    });
 
     return this.toThreadInfo(thread);
   }
 
   getThread(threadId: string): ThreadInfo | null {
-    const state = this.readState();
-    const thread = state.threads.find((item) => item.id === threadId);
+    const index = this.readIndex();
+    const thread = index.threads.find((item) => item.id === threadId);
 
     return thread ? this.toThreadInfo(thread) : null;
   }
 
   listThreads(): ThreadInfo[] {
-    const state = this.readState();
+    const index = this.readIndex();
 
-    return state.threads
+    return index.threads
       .slice()
       .sort((a, b) => b.updatedAt.localeCompare(a.updatedAt))
       .map((thread) => this.toThreadInfo(thread));
   }
 
   updateThreadTitle(threadId: string, title: string) {
-    const state = this.readState();
-    const thread = state.threads.find((item) => item.id === threadId);
+    const index = this.readIndex();
+    const thread = index.threads.find((item) => item.id === threadId);
 
     if (!thread) {
       throw new Error(`Thread not found: ${threadId}`);
@@ -103,30 +122,31 @@ export default class JsonStore {
     thread.title = title;
     thread.updatedAt = new Date().toISOString();
 
-    this.writeState(state);
+    this.writeIndex(index);
   }
 
   touchThread(threadId: string) {
-    const state = this.readState();
-    const thread = state.threads.find((item) => item.id === threadId);
+    const index = this.readIndex();
+    const thread = index.threads.find((item) => item.id === threadId);
 
     if (!thread) {
       throw new Error(`Thread not found: ${threadId}`);
     }
 
     thread.updatedAt = new Date().toISOString();
-    this.writeState(state);
+    this.writeIndex(index);
   }
 
   deleteThread(threadId: string) {
-    const state = this.readState();
+    const index = this.readIndex();
 
-    state.threads = state.threads.filter((item) => item.id !== threadId);
-    state.messages = state.messages.filter(
-      (item) => item.threadId !== threadId,
-    );
+    index.threads = index.threads.filter((item) => item.id !== threadId);
+    this.writeIndex(index);
 
-    this.writeState(state);
+    const sessionPath = this.getSessionPath(threadId);
+    if (existsSync(sessionPath)) {
+      rmSync(sessionPath);
+    }
   }
 
   appendMessage(input: {
@@ -135,14 +155,15 @@ export default class JsonStore {
     content: string;
     id?: string;
   }): StoredMessage {
-    const state = this.readState();
+    const index = this.readIndex();
+    const thread = index.threads.find((item) => item.id === input.threadId);
 
-    if (!state.threads.some((thread) => thread.id === input.threadId)) {
+    if (!thread) {
       throw new Error(`Thread not found: ${input.threadId}`);
     }
 
     const now = new Date().toISOString();
-
+    const session = this.readSession(input.threadId);
     const message: JsonMessage = {
       id: input.id ?? crypto.randomUUID(),
       threadId: input.threadId,
@@ -151,44 +172,71 @@ export default class JsonStore {
       createdAt: now,
     };
 
-    state.messages.push(message);
+    session.messages.push(message);
+    thread.updatedAt = now;
 
-    const thread = state.threads.find((item) => item.id === input.threadId);
-    if (thread) {
-      thread.updatedAt = now;
-    }
-
-    this.writeState(state);
+    this.writeSession(input.threadId, session);
+    this.writeIndex(index);
 
     return this.toStoredMessage(message);
   }
 
   listMessages(threadId: string): StoredMessage[] {
-    const state = this.readState();
+    if (!this.getThread(threadId)) {
+      throw new Error(`Thread not found: ${threadId}`);
+    }
 
-    return state.messages
-      .filter((message) => message.threadId === threadId)
-      .map((message) => this.toStoredMessage(message));
+    return this.readSession(threadId).messages.map((message) =>
+      this.toStoredMessage(message),
+    );
   }
 
-  private ensureFile() {
-    mkdirSync(path.dirname(this.filePath), { recursive: true });
+  private ensureStore() {
+    mkdirSync(this.sessionsDir, { recursive: true });
 
-    if (!existsSync(this.filePath)) {
-      this.writeState({
+    if (!existsSync(this.indexPath)) {
+      this.writeIndex({
         threads: [],
-        messages: [],
       });
     }
   }
 
-  private readState(): JsonStoreState {
-    const content = readFileSync(this.filePath, "utf-8");
-    return JSON.parse(content) as JsonStoreState;
+  private readIndex(): JsonIndexState {
+    return this.readJson<JsonIndexState>(this.indexPath);
   }
 
-  private writeState(state: JsonStoreState) {
-    writeFileSync(this.filePath, JSON.stringify(state, null, 2), "utf-8");
+  private writeIndex(state: JsonIndexState) {
+    this.writeJson(this.indexPath, state);
+  }
+
+  private readSession(threadId: string): JsonSessionState {
+    const sessionPath = this.getSessionPath(threadId);
+
+    if (!existsSync(sessionPath)) {
+      return {
+        threadId,
+        messages: [],
+      };
+    }
+
+    return this.readJson<JsonSessionState>(sessionPath);
+  }
+
+  private writeSession(threadId: string, state: JsonSessionState) {
+    this.writeJson(this.getSessionPath(threadId), state);
+  }
+
+  private getSessionPath(threadId: string) {
+    return path.join(this.sessionsDir, `${encodeURIComponent(threadId)}.json`);
+  }
+
+  private readJson<T>(filePath: string): T {
+    const content = readFileSync(filePath, "utf-8");
+    return JSON.parse(content) as T;
+  }
+
+  private writeJson(filePath: string, value: unknown) {
+    writeFileSync(filePath, JSON.stringify(value, null, 2), "utf-8");
   }
 
   private toThreadInfo(thread: JsonThread): ThreadInfo {
