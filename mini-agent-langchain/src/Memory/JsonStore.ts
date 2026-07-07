@@ -60,7 +60,7 @@ export default class JsonStore {
     this.ensureStore();
   }
 
-  ensureDefaultThread(): ThreadInfo {
+  ensureInitialThread(): ThreadInfo {
     const [existing] = this.listThreads();
 
     if (existing) {

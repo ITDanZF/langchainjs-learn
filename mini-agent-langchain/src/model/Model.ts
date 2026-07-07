@@ -44,7 +44,7 @@ export default class Model {
     ]);
   }
 
-  invoke(input: string, threadId: string = "default") {
+  invoke(input: string, threadId: string) {
     return this.CurrentAgent.invoke(
       {
         messages: [new HumanMessage(input)],

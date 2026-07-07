@@ -39,25 +39,11 @@ async function main() {
     );
     conversation.appendMessage({
       role: "assistant",
-      content: getAssistantContent(result),
+      content: JSON.stringify(result.messages?.at(-1)?.content),
     });
 
     sessionView.renderAgentResult(result);
   });
-}
-
-function getAssistantContent(result: { messages?: Array<{ content?: unknown }> }) {
-  const content = result.messages?.at(-1)?.content;
-
-  if (typeof content === "string") {
-    return content;
-  }
-
-  if (content === undefined || content === null) {
-    return "";
-  }
-
-  return JSON.stringify(content);
 }
 
 main().catch((error) => {

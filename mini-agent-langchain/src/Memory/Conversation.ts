@@ -19,7 +19,7 @@ export default class Conversation {
 
   constructor(store = new JsonStore()) {
     this.store = store;
-    this.ActiveConversation = this.store.ensureDefaultThread();
+    this.ActiveConversation = this.store.ensureInitialThread();
     this.ActiveThreadId = this.ActiveConversation.id;
   }
 
@@ -95,9 +95,9 @@ export default class Conversation {
     this.store.deleteThread(threadId);
 
     if (threadId === this.ActiveThreadId) {
-      const defaultThread = this.store.ensureDefaultThread();
-      this.ActiveThreadId = defaultThread.id;
-      this.ActiveConversation = defaultThread;
+      const initialThread = this.store.ensureInitialThread();
+      this.ActiveThreadId = initialThread.id;
+      this.ActiveConversation = initialThread;
     }
   }
 }

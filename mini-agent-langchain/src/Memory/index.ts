@@ -5,14 +5,13 @@ import JsonStore from "./JsonStore.ts";
 export type ThreadId = string;
 export type MemoryStore = {
   checkpointBackend?: "memory" | "sqlite";
-  LocalStore?: "memory" | "sqlite";
 };
 export default class Memory {
   private readonly checkpointer;
   private readonly jsonStore;
 
   constructor(params: MemoryStore = {}) {
-    const checkpointBackend = params.checkpointBackend ?? params.LocalStore ?? "memory";
+    const checkpointBackend = params.checkpointBackend ?? "memory";
 
     if (checkpointBackend === "sqlite") {
       this.checkpointer = new SqliteStore().getCheckpointer();
@@ -27,15 +26,11 @@ export default class Memory {
     return this.checkpointer;
   }
 
-  getCheckoutPointer() {
-    return this.getCheckpointer();
-  }
-
   getJSONStore() {
     return this.jsonStore;
   }
 
-  getConfig(threadId: ThreadId = "default") {
+  getConfig(threadId: ThreadId) {
     return {
       configurable: {
         thread_id: threadId,

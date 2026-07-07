@@ -23,10 +23,6 @@ export default class SqliteStore {
     return this.checkPointer;
   }
 
-  getCheckPointer() {
-    return this.getCheckpointer();
-  }
-
   close() {
     this.db.close();
   }
