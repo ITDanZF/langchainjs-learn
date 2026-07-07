@@ -14,7 +14,7 @@ export type CreateConversationInput = {
 
 export default class Conversation {
   private readonly store: JsonStore;
-  private ActiveThreadId: string = "default";
+  private ActiveThreadId: string;
   private ActiveConversation: ThreadInfo;
 
   constructor(store = new JsonStore()) {

@@ -20,7 +20,7 @@ export default class Model {
 
   constructor() {
     this.CurrentMemory = new Memory({
-      LocalStore: "sqlite",
+      checkpointBackend: "sqlite",
     });
 
     this.CurrentModel = new ChatOpenAI({
@@ -35,7 +35,7 @@ export default class Model {
       model: this.CurrentModel,
       tools: [],
       // systemPrompt: new SystemMessage(baseSystemPrompt),
-      checkpointer: this.CurrentMemory.getCheckoutPointer(),
+      checkpointer: this.CurrentMemory.getCheckpointer(),
     });
 
     this.PromptTemplate = ChatPromptTemplate.fromMessages([

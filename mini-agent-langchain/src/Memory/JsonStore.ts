@@ -61,13 +61,13 @@ export default class JsonStore {
   }
 
   ensureDefaultThread(): ThreadInfo {
-    const existing = this.getThread("default");
+    const [existing] = this.listThreads();
 
     if (existing) {
       return existing;
     }
 
-    return this.createThread("Default Thread", "default");
+    return this.createThread("Default Thread");
   }
 
   createThread(title: string, id: string = crypto.randomUUID()): ThreadInfo {

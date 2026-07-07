@@ -19,8 +19,12 @@ export default class SqliteStore {
     this.checkPointer = new SqliteSaver(this.db);
   }
 
-  getCheckPointer() {
+  getCheckpointer() {
     return this.checkPointer;
+  }
+
+  getCheckPointer() {
+    return this.getCheckpointer();
   }
 
   close() {
