@@ -19,7 +19,9 @@ export default class Model {
   private PromptTemplate: ChatPromptTemplate;
 
   constructor() {
-    this.CurrentMemory = new Memory();
+    this.CurrentMemory = new Memory({
+      LocalStore: "sqlite",
+    });
 
     this.CurrentModel = new ChatOpenAI({
       model: process.env[CONFIG_KEYS.MODEL_NAME],
