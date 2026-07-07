@@ -1,60 +1,103 @@
-import { th } from "zod/v4/locales/index.js";
+import JsonStore, {
+  type StoredMessage,
+  type StoredMessageRole,
+  type ThreadInfo,
+} from "./JsonStore.ts";
+export type { StoredMessage, StoredMessageRole, ThreadInfo };
 
-export type ThreadInfo = {
+export type CreateConversationInput = {
   id?: string;
   title: string;
-  createdAt: Date;
-  updatedAt: Date;
+  createdAt?: Date;
+  updatedAt?: Date;
 };
 
 export default class Conversation {
-  private ThreadMap = new Map<string, ThreadInfo>();
-
+  private readonly store: JsonStore;
   private ActiveThreadId: string = "default";
-  private ActiveConversation: ThreadInfo | null = null;
+  private ActiveConversation: ThreadInfo;
 
-  constructor() {
-    this.ActiveConversation = {
-      id: this.ActiveThreadId,
-      title: "Default Thread",
-      createdAt: new Date(),
-      updatedAt: new Date(),
-    };
-    this.ThreadMap.set(this.ActiveThreadId, this.ActiveConversation);
+  constructor(store = new JsonStore()) {
+    this.store = store;
+    this.ActiveConversation = this.store.ensureDefaultThread();
+    this.ActiveThreadId = this.ActiveConversation.id;
   }
 
   UUID() {
     return crypto.randomUUID();
   }
 
-  createConversation(Info: ThreadInfo) {
-    const id = Info.id || this.UUID();
-    this.ThreadMap.set(id, {
-      ...Info,
-      id,
-      createdAt: new Date(),
-      updatedAt: new Date(),
-    });
-    return id;
+  createConversation(info: CreateConversationInput) {
+    const thread = this.store.createThread(info.title, info.id);
+    return thread.id;
   }
 
   switchConversation(threadId: string) {
-    if (!this.ThreadMap.has(threadId)) {
+    const thread = this.store.getThread(threadId);
+
+    if (!thread) {
       throw new Error(`Thread with ID ${threadId} does not exist.`);
     }
-    this.ActiveThreadId = threadId;
-    this.ActiveConversation = this.ThreadMap.get(threadId) || null;
+
+    this.ActiveThreadId = thread.id;
+    this.ActiveConversation = thread;
   }
 
-  public getActiveConversation(): ThreadInfo | null {
+  getActiveConversation(): ThreadInfo {
     return this.ActiveConversation;
   }
 
-  public getAllConversations(): ThreadInfo[] {
-    return Array.from(this.ThreadMap.values());
+  getAllConversations(): ThreadInfo[] {
+    return this.store.listThreads();
   }
 
-  public getActiveThreadId(): string {
+  getActiveThreadId(): string {
     return this.ActiveThreadId;
+  }
+
+  touchActiveConversation() {
+    this.store.touchThread(this.ActiveThreadId);
+
+    const thread = this.store.getThread(this.ActiveThreadId);
+    if (thread) {
+      this.ActiveConversation = thread;
+    }
+  }
+
+  appendMessage(input: {
+    role: StoredMessageRole;
+    content: string;
+    threadId?: string;
+  }): StoredMessage {
+    const threadId = input.threadId ?? this.ActiveThreadId;
+
+    const message = this.store.appendMessage({
+      threadId,
+      role: input.role,
+      content: input.content,
+    });
+
+    if (threadId === this.ActiveThreadId) {
+      const thread = this.store.getThread(threadId);
+      if (thread) {
+        this.ActiveConversation = thread;
+      }
+    }
+
+    return message;
+  }
+
+  listMessages(threadId = this.ActiveThreadId): StoredMessage[] {
+    return this.store.listMessages(threadId);
+  }
+
+  deleteConversation(threadId: string) {
+    this.store.deleteThread(threadId);
+
+    if (threadId === this.ActiveThreadId) {
+      const defaultThread = this.store.ensureDefaultThread();
+      this.ActiveThreadId = defaultThread.id;
+      this.ActiveConversation = defaultThread;
+    }
   }
 }

@@ -25,6 +25,11 @@ async function main() {
       return;
     }
 
+    conversation.appendMessage({
+      role: "user",
+      content: commandResult.input,
+    });
+
     sessionView.renderUserMessage(commandResult.input);
     sessionView.renderThinking();
 
@@ -32,8 +37,27 @@ async function main() {
       commandResult.input,
       conversation.getActiveThreadId(),
     );
+    conversation.appendMessage({
+      role: "assistant",
+      content: getAssistantContent(result),
+    });
+
     sessionView.renderAgentResult(result);
   });
+}
+
+function getAssistantContent(result: { messages?: Array<{ content?: unknown }> }) {
+  const content = result.messages?.at(-1)?.content;
+
+  if (typeof content === "string") {
+    return content;
+  }
+
+  if (content === undefined || content === null) {
+    return "";
+  }
+
+  return JSON.stringify(content);
 }
 
 main().catch((error) => {
