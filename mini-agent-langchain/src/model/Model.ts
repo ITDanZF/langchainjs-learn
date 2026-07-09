@@ -4,8 +4,8 @@ import { CONFIG_KEYS } from "../enum/Config.constant.ts";
 import { ChatPromptTemplate } from "@langchain/core/prompts";
 import { baseSystemPrompt } from "./prompts/system.ts";
 import Memory from "../Memory/index.ts";
-import { createAgent, HumanMessage, SystemMessage } from "langchain";
-import { threadId } from "node:worker_threads";
+import { createAgent, HumanMessage } from "langchain";
+import { createTools } from "../tools/index.ts";
 
 export default class Model {
   // 当前模型对象
@@ -33,7 +33,7 @@ export default class Model {
 
     this.CurrentAgent = createAgent({
       model: this.CurrentModel,
-      tools: [],
+      tools: createTools(),
       // systemPrompt: new SystemMessage(baseSystemPrompt),
       checkpointer: this.CurrentMemory.getCheckpointer(),
     });
