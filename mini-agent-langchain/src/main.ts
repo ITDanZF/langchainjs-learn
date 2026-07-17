@@ -4,14 +4,16 @@ import Bootstrap from "./bootstrap/index.ts";
 import Conversation from "./Memory/Conversation.ts";
 import SessionView from "./cli/SessionView.ts";
 import commandSet from "./cli/CommandSet.ts";
+import AgentGenerator from "./Generator/AgentGenerator.ts";
 
 async function main() {
   const cli = new CLI();
   const bootstrap = new Bootstrap();
 
-  const runTime = await bootstrap.setup();
+  await bootstrap.setup();
   const conversation = new Conversation();
   const sessionView = new SessionView();
+  const runTime = new AgentGenerator();
 
   sessionView.renderDashboard(conversation);
 
@@ -25,24 +27,26 @@ async function main() {
       return;
     }
 
-    conversation.appendMessage({
-      role: "user",
-      content: commandResult.input,
-    });
+    // 运行一次标识单次的任务执行
+    await runTime.AgentRuntime(commandResult.input);
+    // conversation.appendMessage({
+    //   role: "user",
+    //   content: commandResult.input,
+    // });
 
-    sessionView.renderUserMessage(commandResult.input);
-    sessionView.renderThinking();
+    // sessionView.renderUserMessage(commandResult.input);
+    // sessionView.renderThinking();
 
-    const result = await runTime.AgentRuntime.model.invoke(
-      commandResult.input,
-      conversation.getActiveThreadId(),
-    );
-    conversation.appendMessage({
-      role: "assistant",
-      content: JSON.stringify(result.messages?.at(-1)?.content),
-    });
+    // const result = await runTime.AgentRuntime.model.invoke(
+    //   commandResult.input,
+    //   conversation.getActiveThreadId(),
+    // );
+    // conversation.appendMessage({
+    //   role: "assistant",
+    //   content: JSON.stringify(result.messages?.at(-1)?.content),
+    // });
 
-    sessionView.renderAgentResult(result);
+    // sessionView.renderAgentResult(result);
   });
 }
 

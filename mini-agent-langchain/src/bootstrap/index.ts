@@ -5,7 +5,7 @@ import {
 } from "../enum/ModelProvider.constant.ts";
 import Configuration from "../config/index.ts";
 import WorkSpace from "../workspace/index.ts";
-import AgentModel from "../model/index.ts";
+// import AgentModel from "../model/index.ts";
 
 export default class Bootstrap {
   private configuration = new Configuration();
@@ -21,11 +21,11 @@ export default class Bootstrap {
       await this.initBaseInfo();
     }
 
-    const AgentRuntime = new AgentModel().getActiveAgent();
+    // const AgentRuntime = new AgentModel().getActiveAgent();
 
-    return {
-      AgentRuntime,
-    };
+    // return {
+    //   AgentRuntime,
+    // };
   }
 
   async initDir() {
