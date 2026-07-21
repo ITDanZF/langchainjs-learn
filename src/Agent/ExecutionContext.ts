@@ -18,6 +18,7 @@ export type CreateExecutionContextInput = {
 };
 
 export type CreateRootExecutionContextInput = {
+  readonly runId?: string;
   readonly threadId: string;
   readonly signal?: AbortSignal;
 };
@@ -26,14 +27,18 @@ export function createRootExecutionContext(
   input: CreateRootExecutionContextInput,
 ): ExecutionContext {
   const threadId = input.threadId.trim();
+  const runId = input.runId?.trim() ?? `run_${crypto.randomUUID()}`;
 
   if (!threadId) {
-    throw new Error('Thread id is required.');
+    throw new Error("Thread id is required.");
+  }
+  if (!runId) {
+    throw new Error("Run id is required.");
   }
 
   return Object.freeze({
-    runId: `run_${crypto.randomUUID()}`,
-    agentType: 'main',
+    runId,
+    agentType: "main",
     parentThreadId: threadId,
     threadId,
     depth: 0,
@@ -53,23 +58,17 @@ export function createExecutionContext(
   if (!agentType) {
     throw new Error("Agent type is required.");
   }
-
   if (!parentThreadId) {
     throw new Error("Parent thread id is required.");
   }
-
   if (input.parentRunId !== undefined && !parentRunId) {
     throw new Error("Parent run id cannot be empty.");
   }
-
   if (!Number.isInteger(depth) || depth < 0) {
-    throw new Error(
-      "Execution depth must be a non-negative integer.",
-    );
+    throw new Error("Execution depth must be a non-negative integer.");
   }
 
   const runId = `run_${crypto.randomUUID()}`;
-
   return Object.freeze({
     runId,
     agentType,

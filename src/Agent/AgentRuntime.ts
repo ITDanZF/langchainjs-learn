@@ -24,6 +24,7 @@ export type RunAgentInput = {
   readonly signal?: AbortSignal;
   readonly onEvent?: AgentEventHandler;
   readonly budget?: RunBudget;
+  readonly approval?: ToolApprovalHandler;
 };
 
 export type AgentRunResult =
@@ -52,6 +53,7 @@ export type AgentRunResult =
 
 export type AgentModelRunner = {
   stream(input: ModelRunInput): AsyncIterable<string>;
+  invokeText?(input: ModelRunInput): Promise<string>;
 };
 
 export default class AgentRuntime {
@@ -82,7 +84,7 @@ export default class AgentRuntime {
     });
     const tools = guardTools(this.toolResolver.resolve(definition.tools), {
       policy: this.toolPolicy,
-      approval: this.approval,
+      approval: input.approval ?? this.approval,
       budget,
       onEvent: (event) =>
         emitToolExecutionEvent(input.onEvent, context, event),
@@ -104,16 +106,17 @@ export default class AgentRuntime {
     }
 
     try {
-      for await (const chunk of this.model.stream({
+      const modelInput: ModelRunInput = {
         prompt: input.prompt,
         threadId: context.threadId,
         systemPrompt: definition.systemPrompt,
         tools,
         signal: context.signal,
         maxTurns: definition.maxTurns ?? budget.limits.maxTurns,
-      })) {
+        visibility: "internal",
+      };
+      const appendChunk = async (chunk: string) => {
         chunks.push(chunk);
-
         await emitAgentEvent(
           input.onEvent,
           createAgentEvent(context, {
@@ -121,6 +124,14 @@ export default class AgentRuntime {
             content: chunk,
           }),
         );
+      };
+
+      if (this.model.invokeText) {
+        await appendChunk(await this.model.invokeText(modelInput));
+      } else {
+        for await (const chunk of this.model.stream(modelInput)) {
+          await appendChunk(chunk);
+        }
       }
 
       const content = chunks.join("");

@@ -20,6 +20,7 @@
   - `/thread-new [title]`
   - `/thread-use <id>`
   - `/help`
+- 支持 `/paste` 多行输入，单独输入 `.end` 提交。
 - 内置 `read_file`、`list_files`、`search_text`、`write_file` 和 `edit_file`。
 - 写入和编辑默认需要终端确认，可选择仅允许一次或当前会话允许。
 - 支持主 Agent 向只读文本子 Agent 委派任务。
@@ -29,30 +30,22 @@
 
 ```mermaid
 flowchart TD
-  User[User] --> CLI[CLI Input Loop]
-  CLI --> CommandSet[CommandSet]
-  CommandSet -->|session commands| Conversation[Conversation]
-  CommandSet -->|normal input| Main[main.ts]
-
-  Main -->|append user message| Conversation
-  Main -->|invoke input + activeThreadId| Model[Model]
-  Model --> Agent[LangChain createAgent]
-  Agent --> ChatModel[ChatOpenAI-compatible Model]
-  Agent --> Tools[Tools]
-  Agent --> Checkpointer[SQLite Checkpointer]
-
-  Conversation --> JsonStore[JsonStore]
-  JsonStore --> IndexJson[sessions/index.json]
-  JsonStore --> ThreadJson[sessions/threadId.json]
-
-  Checkpointer --> MemorySqlite[sessions/memory.sqlite]
-  Main -->|append assistant message| Conversation
-
-  Bootstrap[Bootstrap] --> Config[config.json]
-  Bootstrap --> Workspace[Workspace]
-  Bootstrap --> ModelRuntime[AgentModel Runtime]
-  ModelRuntime --> Model
+  CLI[CLI Adapter] --> App[AgentApplication]
+  FutureElectron[Future Electron Adapter] -. same contract .-> App
+  App --> Runner[AgentRunner Port]
+  Runner --> Generator[AgentGenerator]
+  Generator --> Model[LangChain Model]
+  Generator --> SubAgent[AgentRuntime]
+  Generator --> Tools[Guarded Tools]
+  App --> Events[Serializable Application Events]
+  Events --> CLI
+  Events -. IPC-ready .-> FutureElectron
+  Main[main.ts Composition Root] --> CLI
+  Main --> App
+  Main --> Conversation[Conversation]
 ```
+
+`AgentApplication` 和 `ThreadApplication` 是界面无关的用例层。CLI 不直接调用模型、Agent 内部事件或 JSON 存储；它只操作应用用例并渲染可 JSON 序列化的事件与快照。未来接入 Electron 时，可以保留应用层和 Agent 运行时，只新增 IPC adapter 与 renderer。
 
 ## 记忆系统设计
 
@@ -128,7 +121,8 @@ sequenceDiagram
   participant U as User
   participant CLI as CLI
   participant C as Conversation
-  participant M as Model
+  participant APP as AgentApplication
+  participant M as AgentRunner
   participant A as LangChain Agent
   participant J as JsonStore
   participant S as SQLite Checkpointer
@@ -136,12 +130,16 @@ sequenceDiagram
   U->>CLI: 输入消息
   CLI->>C: 获取 activeThreadId
   CLI->>J: 保存 user message
-  CLI->>M: invoke(input, threadId)
+  CLI->>APP: startRun(input, threadId)
+  APP-->>CLI: run_started
+  APP->>M: run(input, runId, threadId)
   M->>A: agent.invoke(messages, config)
   A->>S: 读取 thread_id 对应 checkpoint
   A->>A: 模型推理 / 工具调用
   A->>S: 写入最新 checkpoint
   A-->>M: 返回 result.messages
+  M-->>APP: content / Agent events
+  APP-->>CLI: text_delta / approval / run_completed
   CLI->>J: 保存 assistant message
   CLI-->>U: 渲染最终回答
 ```
@@ -150,7 +148,13 @@ sequenceDiagram
 
 ```txt
 src/main.ts
-  CLI 主循环，连接命令系统、会话系统和模型调用。
+  仅作为组合根，装配 CLI、应用层、会话和 Agent runner。
+
+src/application/
+  AgentApplication：启动、等待、取消 run，以及协调工具授权。
+  ThreadApplication：创建、切换、删除会话并协调消息持久化。
+  contracts：可序列化的应用事件和请求。
+  ports：界面无关的 AgentRunner、ThreadStore 和 MessageStore 端口。
 
 src/bootstrap/
   启动初始化，包括用户配置、工作目录、Agent runtime。
@@ -162,11 +166,11 @@ src/workspace/
   管理 ~/.mini-agent、sessions、logs、workspaceRoot 等目录。
 
 src/cli/
-  命令解析、会话命令、终端视图渲染。
+  单一 stdin 会话、命令解析、应用适配器和终端事件渲染。
 
 src/Memory/
-  Conversation：当前会话控制器。
-  JsonStore：会话索引和可读历史存储。
+  Conversation：旧版兼容会话门面，新入口不再直接依赖。
+  JsonStore：ThreadStore / MessageStore 的本地 JSON 实现。
   SqliteStore：LangGraph SQLite checkpointer。
   Memory：checkpointer 门面。
 
@@ -285,6 +289,9 @@ npm run check
 
 /help
   显示帮助
+
+/paste
+  进入多行输入模式，单独输入 .end 提交
 ```
 
 ## 设计原则
@@ -326,6 +333,9 @@ SQLite Checkpointer
 
 ## 后续路线
 
+- 新增 Electron IPC adapter；renderer 只消费 `ApplicationEvent`，不导入 Agent、模型或文件系统模块。
+- 为应用事件和 DTO 增加协议版本，形成稳定的 IPC compatibility contract。
+- 将内存中的运行快照扩展为可选持久化运行日志、token 与费用统计。
 - 新增 `/history` 命令，展示当前会话 JSON 历史。
 - 新增 `/thread-delete <id>`。
 - 删除会话时同步清理 SQLite checkpoint。

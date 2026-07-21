@@ -26,8 +26,10 @@ import RunBudget, {
 } from "./RunLimits.ts";
 
 export type AgentGeneratorRunOptions = {
+  readonly runId?: string;
   readonly threadId: string;
   readonly signal?: AbortSignal;
+  readonly approval?: ToolApprovalHandler;
   readonly onChunk?: (chunk: string) => void | Promise<void>;
   readonly onAgentEvent?: AgentEventHandler;
 };
@@ -52,7 +54,7 @@ export default class AgentGenerator {
   private readonly approval: ToolApprovalHandler;
   private readonly policy: ToolPolicy;
   private readonly limits: RunLimits;
-  private currentAbortScope: RunAbortScope | null = null;
+  private readonly activeRuns = new Map<string, RunAbortScope>();
 
   constructor(options: AgentGeneratorOptions = {}) {
     this.agent = new AgentModel().getActiveAgent();
@@ -68,12 +70,16 @@ export default class AgentGenerator {
     );
   }
 
-  cancelCurrentRun(reason: unknown = new Error("Agent run cancelled by user.")): boolean {
-    if (!this.currentAbortScope || this.currentAbortScope.signal.aborted) {
+  cancelRun(
+    runId: string,
+    reason: unknown = new Error("Agent run cancelled by user."),
+  ): boolean {
+    const abortScope = this.activeRuns.get(runId);
+    if (!abortScope || abortScope.signal.aborted) {
       return false;
     }
 
-    this.currentAbortScope.abort(reason);
+    abortScope.abort(reason);
     return true;
   }
 
@@ -81,20 +87,13 @@ export default class AgentGenerator {
     input: string,
     options: AgentGeneratorRunOptions,
   ): Promise<string> {
-    if (this.agent.status === "running") {
-      throw new Error("Agent is already running.");
-    }
-
-    if (this.agent.status === "disabled") {
-      throw new Error("Agent is disabled.");
-    }
-
     const abortScope = createRunAbortScope(
       this.limits.timeoutMs,
       options.signal,
     );
     const budget = new RunBudget(this.limits);
     const context = createRootExecutionContext({
+      runId: options.runId,
       threadId: options.threadId,
       signal: abortScope.signal,
     });
@@ -108,18 +107,21 @@ export default class AgentGenerator {
         signal: context.signal,
         onEvent: options.onAgentEvent,
         budget,
+        approval: options.approval ?? this.approval,
       },
     );
     const tools = guardTools([...createTools(), delegateTaskTool], {
       policy: this.policy,
-      approval: this.approval,
+      approval: options.approval ?? this.approval,
       budget,
       onEvent: (event) =>
         emitToolExecutionEvent(options.onAgentEvent, context, event),
     });
 
-    this.agent.status = "running";
-    this.currentAbortScope = abortScope;
+    if (this.activeRuns.has(context.runId)) {
+      throw new Error(`Run is already active: ${context.runId}`);
+    }
+    this.activeRuns.set(context.runId, abortScope);
     const chunks: string[] = [];
 
     try {
@@ -215,10 +217,7 @@ export default class AgentGenerator {
       throw error;
     } finally {
       abortScope.dispose();
-      if (this.currentAbortScope === abortScope) {
-        this.currentAbortScope = null;
-      }
-      this.agent.status = "idle";
+      this.activeRuns.delete(context.runId);
     }
   }
 }

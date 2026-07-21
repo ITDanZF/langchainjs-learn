@@ -11,7 +11,10 @@ export type ModelRunInput = {
   readonly tools: RegisteredTool[];
   readonly signal?: AbortSignal;
   readonly maxTurns?: number;
+  readonly visibility?: "public" | "internal";
 };
+
+const INTERNAL_RUN_TAG = "mini-agent:internal";
 
 function getRecursionLimit(maxTurns: number | undefined): number | undefined {
   return maxTurns === undefined ? undefined : maxTurns * 2 + 1;
@@ -55,8 +58,35 @@ export default class Model {
         ...this.CurrentMemory.getConfig(input.threadId),
         recursionLimit: getRecursionLimit(input.maxTurns),
         signal: input.signal,
+        ...(input.visibility === "internal"
+          ? { tags: [INTERNAL_RUN_TAG] }
+          : {}),
       },
     );
+  }
+
+  async invokeText(input: ModelRunInput): Promise<string> {
+    const result = await this.invoke(input);
+    const lastMessage = result.messages.at(-1);
+
+    if (!lastMessage) {
+      throw new Error("Agent returned no messages.");
+    }
+    if (typeof lastMessage.content === "string") {
+      return lastMessage.content;
+    }
+
+    return lastMessage.content
+      .map((part) => {
+        if (typeof part === "string") {
+          return part;
+        }
+        if ("text" in part && typeof part.text === "string") {
+          return part.text;
+        }
+        return "";
+      })
+      .join("");
   }
 
   async *stream(
@@ -75,7 +105,13 @@ export default class Model {
       },
     );
 
-    for await (const [message] of stream) {
+    for await (const [message, metadata] of stream) {
+      if (
+        Array.isArray(metadata.tags) &&
+        metadata.tags.includes(INTERNAL_RUN_TAG)
+      ) {
+        continue;
+      }
       if (!(message instanceof AIMessageChunk)) {
         continue;
       }

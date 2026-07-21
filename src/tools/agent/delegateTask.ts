@@ -7,6 +7,7 @@ import type {
 } from "../../Agent/AgentRuntime.ts";
 import AgentRegistry from "../../Agent/AgentRegistry.ts";
 import type RunBudget from "../../Agent/RunLimits.ts";
+import type { ToolApprovalHandler } from "../../security/ToolPolicy.ts";
 
 const delegateTaskSchema = z.object({
   subagent_type: z
@@ -34,6 +35,7 @@ export type DelegateTaskContext = {
   readonly signal?: AbortSignal;
   readonly onEvent?: AgentEventHandler;
   readonly budget: RunBudget;
+  readonly approval?: ToolApprovalHandler;
 };
 
 export function formatDelegateTaskResult(
@@ -103,6 +105,7 @@ export function createDelegateTaskTool(
           signal: context.signal,
           onEvent: context.onEvent,
           budget: context.budget,
+          approval: context.approval,
         });
 
         return formatDelegateTaskResult(description, result);

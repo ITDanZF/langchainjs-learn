@@ -7,23 +7,17 @@ import {
   rmSync,
 } from "node:fs";
 import { getAgentHome } from "../workspace/path.ts";
+import type {
+  MessageRecord,
+  MessageRole,
+  MessageStore,
+  ThreadRecord,
+  ThreadStore,
+} from "../application/threadPorts.ts";
 
-export type ThreadInfo = {
-  id: string;
-  title: string;
-  createdAt: Date;
-  updatedAt: Date;
-};
-
-export type StoredMessageRole = "user" | "assistant" | "system" | "tool";
-
-export type StoredMessage = {
-  id: string;
-  threadId: string;
-  role: StoredMessageRole;
-  content: string;
-  createdAt: Date;
-};
+export type ThreadInfo = ThreadRecord;
+export type StoredMessageRole = MessageRole;
+export type StoredMessage = MessageRecord;
 
 type JsonThread = {
   id: string;
@@ -49,7 +43,7 @@ type JsonSessionState = {
   messages: JsonMessage[];
 };
 
-export default class JsonStore {
+export default class JsonStore implements ThreadStore, MessageStore {
   private readonly sessionsDir: string;
   private readonly indexPath: string;
 

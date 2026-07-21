@@ -1,4 +1,7 @@
-import Conversation, { ThreadInfo } from "../Memory/Conversation.ts";
+import type {
+  ThreadDto,
+  ThreadSnapshot,
+} from "../application/threadContracts.ts";
 
 export default class SessionView {
   private readonly cyan = "\x1b[36m";
@@ -11,20 +14,20 @@ export default class SessionView {
 
   constructor() {}
 
-  MainRender(conversation: Conversation) {
-    this.renderDashboard(conversation);
+  MainRender(snapshot: ThreadSnapshot) {
+    this.renderDashboard(snapshot);
   }
 
   clear() {
     console.clear();
   }
 
-  renderDashboard(conversation: Conversation) {
+  renderDashboard(snapshot: ThreadSnapshot) {
     this.clear();
     this.renderWelcome();
-    this.renderStatusLine(conversation);
-    this.renderActiveConversation(conversation);
-    this.renderConversationList(conversation);
+    this.renderStatusLine(snapshot);
+    this.renderActiveConversation(snapshot);
+    this.renderConversationList(snapshot);
     this.renderHelp();
     this.renderPromptHint();
   }
@@ -54,11 +57,11 @@ ${this.gray}──────────────────────�
 `);
   }
 
-  renderStatusLine(conversation: Conversation) {
-    const active = conversation.getActiveConversation();
-    const count = conversation.getAllConversations().length;
-    const title = active?.title ?? "Unknown";
-    const id = active?.id ?? "unknown";
+  renderStatusLine(snapshot: ThreadSnapshot) {
+    const active = snapshot.activeThread;
+    const count = snapshot.threads.length;
+    const title = active.title;
+    const id = active.id;
 
     console.log(
       `${this.cyan}状态：${this.reset}已连接当前会话 ${this.bold}${title}${this.reset} ${this.gray}(${id})${this.reset}`,
@@ -73,18 +76,18 @@ ${this.gray}──────────────────────�
     console.log(`${this.gray}──────────────────────────────────────────────${this.reset}`);
   }
 
-  renderActiveConversation(conversation: Conversation) {
-    const active = conversation.getActiveConversation();
+  renderActiveConversation(snapshot: ThreadSnapshot) {
+    const active = snapshot.activeThread;
 
-    console.log(`${this.yellow}当前会话：${this.reset}${active?.title ?? "Unknown"}`);
-    console.log(`${this.yellow}Thread ID：${this.reset}${active?.id ?? "unknown"}`);
+    console.log(`${this.yellow}当前会话：${this.reset}${active.title}`);
+    console.log(`${this.yellow}Thread ID：${this.reset}${active.id}`);
     console.log(`${this.gray}──────────────────────────────────────────────${this.reset}`);
     console.log("");
   }
 
-  renderConversationList(conversation: Conversation) {
-    const activeThreadId = conversation.getActiveThreadId();
-    const conversations = conversation.getAllConversations();
+  renderConversationList(snapshot: ThreadSnapshot) {
+    const activeThreadId = snapshot.activeThreadId;
+    const conversations = snapshot.threads;
 
     console.log(`${this.green}${this.bold}会话列表${this.reset}`);
 
@@ -101,7 +104,7 @@ ${this.gray}──────────────────────�
     console.log("");
   }
 
-  renderConversationItem(thread: ThreadInfo, isActive = false) {
+  renderConversationItem(thread: ThreadDto, isActive = false) {
     const marker = isActive ? ">" : " ";
     const title = thread.title || "Untitled";
     const id = thread.id ?? "unknown";
@@ -166,8 +169,8 @@ ${this.gray}──────────────────────�
     console.error(`${this.red}运行失败：${this.reset}`, error);
   }
 
-  private formatDate(date: Date) {
-    return date.toLocaleString("zh-CN", {
+  private formatDate(date: string) {
+    return new Date(date).toLocaleString("zh-CN", {
       hour12: false,
     });
   }

@@ -1,111 +1,65 @@
-import { Command } from 'commander';
-import { createInterface } from 'node:readline/promises';
-import { stdin as input, stdout as output } from 'node:process';
+import { Command } from "commander";
+import InputSession from "./InputSession.ts";
 
 type InputHandler = (input: string) => Promise<void> | void;
 
 export default class CLI {
-    private program: Command;
+  private readonly program = new Command();
 
-    private readonly name = 'mini-agent';
-    private readonly description = 'A mini Agent CLI';
-    private readonly version = '0.1.0';
+  constructor(private readonly input: InputSession) {
+    this.program
+      .name("mini-agent")
+      .description("A mini Agent CLI")
+      .version("0.1.0");
+  }
 
-    constructor() {
-        this.program = new Command();
+  async run(argv: string[], handleInput: InputHandler): Promise<void> {
+    this.program.action(async () => this.loop(handleInput));
 
-        // default sys info
-        this.program
-            .name(this.name)
-            .description(this.description)
-            .version(this.version);
+    try {
+      await this.program.parseAsync(argv);
+    } catch (error) {
+      this.handleError(error);
+      process.exitCode = 1;
+    } finally {
+      this.input.close();
     }
+  }
 
-    /**
-     * 系统命令开始运行
-     */
-    async run(argv: string[], handleInput: InputHandler) {
-        try {
-            this.RegisterInteractiveCommand(handleInput);
+  private async loop(handleInput: InputHandler): Promise<void> {
+    while (true) {
+      const message = await this.input.readMessage();
+      if (!message) {
+        continue;
+      }
+      if (this.isExitCommand(message)) {
+        this.input.write("已退出 Mini Agent，再见！\n");
+        return;
+      }
 
-            await this.program.parseAsync(argv);
-        } catch (error) {
-            this.handleError(error);
-            process.exitCode = 1;
-        }
+      try {
+        await handleInput(message);
+      } catch (error) {
+        this.handleError(error);
+      }
     }
+  }
 
-    /**
-     * 交互式命令行循环体
-     */
-    async CLILoop(handleInput: InputHandler) {
-        const rl = createInterface({ input, output });
+  private isExitCommand(input: string): boolean {
+    const command = input.trim().toLowerCase();
+    return ["/exit", "/quit", "exit", "quit", "q", "退出"].includes(command);
+  }
 
-        try {
-            while (true) {
-                const line = (await rl.question('> ')).trim();
+  private handleError(error: unknown): void {
+    const message = error instanceof Error ? error.message : String(error);
+    this.input.write(`\x1b[31m运行失败：\x1b[0m${message}\n`);
 
-                if (!line) continue;
-
-                const command = line.toLowerCase();
-
-                if (this.isExitCommand(line)) {
-                    console.log('已退出 Mini Agent，再见！');
-                    break;
-                }
-
-                try {
-                    await handleInput(line);
-                } catch (error) {
-                    this.handleError(error);
-                }
-            }
-        } finally {
-            rl.close();
-        }
+    if (
+      error instanceof Error &&
+      process.env.NODE_ENV === "development" &&
+      error.stack
+    ) {
+      this.input.write(`\x1b[90m${error.stack}\x1b[0m\n`);
     }
-
-    /**
-     * 注册交互式命令行
-     */
-    private RegisterInteractiveCommand(handleInput: InputHandler) {
-        this.program.action(async () => {
-            // 开始系统命令循环
-            await this.CLILoop(handleInput);
-        });
-    }
-
-    /**
-     * 推出命令
-     */
-    private isExitCommand(line: string) {
-        const command = line.trim().toLowerCase();
-
-        return (
-            command === '/exit' ||
-            command === '/quit' ||
-            command === 'exit' ||
-            command === 'quit' ||
-            command === 'q' ||
-            command === '退出'
-        );
-    }
-
-    private handleError(error: unknown) {
-        const red = '\x1b[31m';
-        const gray = '\x1b[90m';
-        const reset = '\x1b[0m';
-
-        if (error instanceof Error) {
-            console.error(`${red}运行失败：${reset}${error.message}`);
-
-            if (process.env.NODE_ENV === 'development' && error.stack) {
-                console.error(`${gray}${error.stack}${reset}`);
-            }
-
-            return;
-        }
-
-        console.error(`${red}运行失败：${reset}`, error);
-    }
+  }
 }
