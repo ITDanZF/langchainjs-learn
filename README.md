@@ -2,10 +2,11 @@
 
 `mini-agent-langchain` 是一个基于 LangChain.js / LangGraph 的命令行 Agent 原型。它的目标不是做一个简单的聊天壳，而是逐步沉淀出一套可扩展的本地 Agent 运行时：支持多会话、短期记忆、可读历史记录、工具系统，以及未来的云端同步。
 
-当前项目重点已经成型在两块：
+当前项目重点已经成型在三块：
 
 - **记忆系统**：用 SQLite checkpointer 给 AI 保存上下文，用 JSON 给程序保存可展示会话历史。
 - **CLI 会话系统**：支持创建、查看、切换 thread，让同一个会话 id 同时驱动用户历史和 AI checkpoint。
+- **安全执行系统**：文件工具受真实工作区边界、审批策略、原子写入和运行预算保护。
 
 ## 功能概览
 
@@ -19,7 +20,10 @@
   - `/thread-new [title]`
   - `/thread-use <id>`
   - `/help`
-- 预留工具系统目录，后续可接入 `read_file`、`list_files`、`search_files` 等 LangChain tools。
+- 内置 `read_file`、`list_files`、`search_text`、`write_file` 和 `edit_file`。
+- 写入和编辑默认需要终端确认，可选择仅允许一次或当前会话允许。
+- 支持主 Agent 向只读文本子 Agent 委派任务。
+- 支持最大轮次、工具调用预算、委派深度、运行超时和 Ctrl+C 取消。
 
 ## 架构图
 
@@ -170,25 +174,20 @@ src/model/
   AgentModel：Agent runtime 管理。
   Model：LangChain Agent 封装。
   prompts/：系统提示词。
-  tools/：工具系统预留目录。
+
+src/Agent/
+  主 Agent、子 Agent、事件、执行上下文和运行预算。
+
+src/tools/
+  文件工具、路径边界、原子写入和工具注册。
+
+src/security/
+  工具权限策略、审批决策和安全工具包装。
 ```
 
-## 工具系统规划
+## 工具与安全系统
 
-当前 `src/model/tools` 还是轻量骨架，推荐下一步按 LangChainJS 官方工具机制接入。
-
-计划结构：
-
-```txt
-src/model/tools/
-  index.ts
-  common/
-    IO_tool.ts
-    Search_tool.ts
-    Shell_tool.ts
-```
-
-推荐第一批工具：
+当前工具集合：
 
 ```txt
 read_file
@@ -197,18 +196,22 @@ read_file
 list_files
   列出目录内容
 
-search_files
+search_text
   在工作区内搜索文本
+
+write_file / edit_file
+  创建、覆盖或精确修改文本文件
 ```
 
-工具接入 `Model.ts` 的方式：
+读取工具默认允许；写入工具默认询问；未注册工具默认拒绝。所有文件路径都会先进行词法边界检查，再解析真实路径，拒绝通过符号链接或 Junction 越过工作区。文件写入使用同目录临时文件和原子替换，降低中途失败导致文件损坏的风险。
 
-```ts
-this.CurrentAgent = createAgent({
-  model: this.CurrentModel,
-  tools: Tools.getTools(),
-  checkpointer: this.CurrentMemory.getCheckpointer(),
-});
+默认运行限制：
+
+```txt
+maxTurns             8
+maxToolCalls         20
+timeoutMs            120000
+maxDelegationDepth   1
 ```
 
 关于 LangChainJS 工具的官方机制，可查看：
@@ -323,11 +326,9 @@ SQLite Checkpointer
 
 ## 后续路线
 
-- 完成 `Tools` 静态工具集合。
-- 接入 `read_file` 和 `list_files`。
 - 新增 `/history` 命令，展示当前会话 JSON 历史。
 - 新增 `/thread-delete <id>`。
+- 删除会话时同步清理 SQLite checkpoint。
 - 抽象 `ThreadStore` / `MessageStore` 接口，为云同步做准备。
-- 加入工具权限模型。
+- 增加结构化运行日志、token 和费用统计。
 - 支持 MCP 或第三方工具包。
-

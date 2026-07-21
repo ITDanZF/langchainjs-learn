@@ -3,10 +3,17 @@ import ToolResolver from "../tools/ToolResolver.ts";
 import {
   createAgentEvent,
   emitAgentEvent,
+  emitToolExecutionEvent,
   type AgentEventHandler,
 } from "./AgentEvent.ts";
 import AgentRegistry from "./AgentRegistry.ts";
 import { createExecutionContext } from "./ExecutionContext.ts";
+import RunBudget, { DEFAULT_RUN_LIMITS } from "./RunLimits.ts";
+import { guardTools } from "../security/GuardedTool.ts";
+import ToolPolicy, {
+  denyToolApproval,
+  type ToolApprovalHandler,
+} from "../security/ToolPolicy.ts";
 
 export type RunAgentInput = {
   readonly agentType: string;
@@ -16,6 +23,7 @@ export type RunAgentInput = {
   readonly depth?: number;
   readonly signal?: AbortSignal;
   readonly onEvent?: AgentEventHandler;
+  readonly budget?: RunBudget;
 };
 
 export type AgentRunResult =
@@ -51,6 +59,8 @@ export default class AgentRuntime {
     private readonly registry: AgentRegistry,
     private readonly model: AgentModelRunner,
     private readonly toolResolver: ToolResolver,
+    private readonly toolPolicy: ToolPolicy = new ToolPolicy(),
+    private readonly approval: ToolApprovalHandler = denyToolApproval,
   ) {}
 
   async run(input: RunAgentInput): Promise<AgentRunResult> {
@@ -66,7 +76,17 @@ export default class AgentRuntime {
       depth: input.depth,
       signal: input.signal,
     });
-    const tools = this.toolResolver.resolve(definition.tools);
+    const budget = input.budget ?? new RunBudget({
+      ...DEFAULT_RUN_LIMITS,
+      maxTurns: definition.maxTurns ?? DEFAULT_RUN_LIMITS.maxTurns,
+    });
+    const tools = guardTools(this.toolResolver.resolve(definition.tools), {
+      policy: this.toolPolicy,
+      approval: this.approval,
+      budget,
+      onEvent: (event) =>
+        emitToolExecutionEvent(input.onEvent, context, event),
+    });
     const chunks: string[] = [];
 
     await emitAgentEvent(
@@ -90,6 +110,7 @@ export default class AgentRuntime {
         systemPrompt: definition.systemPrompt,
         tools,
         signal: context.signal,
+        maxTurns: definition.maxTurns ?? budget.limits.maxTurns,
       })) {
         chunks.push(chunk);
 

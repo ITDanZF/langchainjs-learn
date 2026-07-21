@@ -1,9 +1,13 @@
-import { mkdir, stat, writeFile } from "node:fs/promises";
-import path from "node:path";
+import { stat } from "node:fs/promises";
 import { tool } from "langchain";
 import { z } from "zod";
 import { assertFileFreshForWrite, updateReadFileState } from "../common/fileState.ts";
-import { resolveWorkspacePath, toWorkspaceRelativePath } from "../common/path.ts";
+import { atomicWriteTextFile } from "../common/atomicWrite.ts";
+import {
+  assertSafeWorkspaceWritePath,
+  resolveWorkspacePath,
+  toWorkspaceRelativePath,
+} from "../common/path.ts";
 import { normalizeLineEndings, readTextFile, restoreLineEndings } from "../common/text.ts";
 
 function isFileNotFound(error: unknown) {
@@ -13,6 +17,7 @@ function isFileNotFound(error: unknown) {
 export const writeFileTool = tool(
   async ({ path: filePath, content }) => {
     const absolutePath = resolveWorkspacePath(filePath);
+    await assertSafeWorkspaceWritePath(absolutePath);
     const normalizedContent = normalizeLineEndings(content);
     let finalContent = content;
     let operation: "created" | "updated" = "created";
@@ -28,8 +33,7 @@ export const writeFileTool = tool(
       }
     }
 
-    await mkdir(path.dirname(absolutePath), { recursive: true });
-    await writeFile(absolutePath, finalContent, "utf8");
+    await atomicWriteTextFile(absolutePath, finalContent);
 
     const fileStat = await stat(absolutePath);
     updateReadFileState(absolutePath, normalizedContent, fileStat.mtimeMs);

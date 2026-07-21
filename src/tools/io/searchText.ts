@@ -2,7 +2,7 @@ import path from "node:path";
 import { tool } from "langchain";
 import { z } from "zod";
 import { DEFAULT_SEARCH_LIMIT, MAX_SEARCH_LIMIT } from "../common/limits.ts";
-import { resolveWorkspacePath, toWorkspaceRelativePath } from "../common/path.ts";
+import { resolveExistingWorkspacePath, toWorkspaceRelativePath } from "../common/path.ts";
 import { escapeRegExp, readTextFile, wildcardToRegExp } from "../common/text.ts";
 import { walkFiles } from "../common/walk.ts";
 
@@ -16,7 +16,7 @@ export const searchTextTool = tool(
     context = 0,
     limit = DEFAULT_SEARCH_LIMIT,
   }) => {
-    const absolutePath = resolveWorkspacePath(searchPath);
+    const absolutePath = await resolveExistingWorkspacePath(searchPath);
     const cappedLimit = Math.min(limit, MAX_SEARCH_LIMIT);
     const fileMatcher = glob ? wildcardToRegExp(glob) : null;
     const flags = case_sensitive ? "g" : "gi";

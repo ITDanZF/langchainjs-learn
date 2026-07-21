@@ -2,13 +2,13 @@ import path from "node:path";
 import { tool } from "langchain";
 import { z } from "zod";
 import { DEFAULT_LIST_LIMIT, MAX_LIST_LIMIT } from "../common/limits.ts";
-import { resolveWorkspacePath, toWorkspaceRelativePath } from "../common/path.ts";
+import { resolveExistingWorkspacePath, toWorkspaceRelativePath } from "../common/path.ts";
 import { wildcardToRegExp } from "../common/text.ts";
 import { walkFiles } from "../common/walk.ts";
 
 export const listFilesTool = tool(
   async ({ path: searchPath, pattern, recursive = true, limit = DEFAULT_LIST_LIMIT }) => {
-    const absolutePath = resolveWorkspacePath(searchPath);
+    const absolutePath = await resolveExistingWorkspacePath(searchPath);
     const cappedLimit = Math.min(limit, MAX_LIST_LIMIT);
     const matcher = pattern ? wildcardToRegExp(pattern) : null;
     const files = await walkFiles(absolutePath, {

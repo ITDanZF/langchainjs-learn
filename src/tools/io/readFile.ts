@@ -1,12 +1,12 @@
 import { tool } from "langchain";
 import { z } from "zod";
 import { rememberReadFile } from "../common/fileState.ts";
-import { resolveWorkspacePath, toWorkspaceRelativePath } from "../common/path.ts";
+import { resolveExistingWorkspacePath, toWorkspaceRelativePath } from "../common/path.ts";
 import { addLineNumbers, readTextFile, sliceLines, truncateResult } from "../common/text.ts";
 
 export const readFileTool = tool(
   async ({ path, offset, limit }) => {
-    const absolutePath = resolveWorkspacePath(path);
+    const absolutePath = await resolveExistingWorkspacePath(path);
     const { content, mtimeMs, size } = await readTextFile(absolutePath);
     const range = sliceLines(content, offset, limit);
     const numberedContent = addLineNumbers(range.selectedLines, range.startLine);

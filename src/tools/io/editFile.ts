@@ -1,9 +1,13 @@
-import { mkdir, stat, writeFile } from "node:fs/promises";
-import path from "node:path";
+import { stat } from "node:fs/promises";
 import { tool } from "langchain";
 import { z } from "zod";
 import { assertFileFreshForWrite, updateReadFileState } from "../common/fileState.ts";
-import { resolveWorkspacePath, toWorkspaceRelativePath } from "../common/path.ts";
+import { atomicWriteTextFile } from "../common/atomicWrite.ts";
+import {
+  assertSafeWorkspaceWritePath,
+  resolveWorkspacePath,
+  toWorkspaceRelativePath,
+} from "../common/path.ts";
 import { normalizeLineEndings, readTextFile, restoreLineEndings } from "../common/text.ts";
 
 function isFileNotFound(error: unknown) {
@@ -21,6 +25,7 @@ export const editFileTool = tool(
     }
 
     const absolutePath = resolveWorkspacePath(filePath);
+    await assertSafeWorkspaceWritePath(absolutePath);
     const normalizedOld = normalizeLineEndings(old_string);
     const normalizedNew = normalizeLineEndings(new_string);
 
@@ -50,8 +55,7 @@ export const editFileTool = tool(
       }
 
       const createdContent = restoreLineEndings(normalizedNew, lineEnding);
-      await mkdir(path.dirname(absolutePath), { recursive: true });
-      await writeFile(absolutePath, createdContent, "utf8");
+      await atomicWriteTextFile(absolutePath, createdContent);
       const fileStat = await stat(absolutePath);
       updateReadFileState(absolutePath, normalizedNew, fileStat.mtimeMs);
       return `File created: ${toWorkspaceRelativePath(absolutePath)}`;
@@ -72,7 +76,10 @@ export const editFileTool = tool(
       ? currentContent.replaceAll(normalizedOld, normalizedNew)
       : currentContent.replace(normalizedOld, normalizedNew);
 
-    await writeFile(absolutePath, restoreLineEndings(updatedContent, lineEnding), "utf8");
+    await atomicWriteTextFile(
+      absolutePath,
+      restoreLineEndings(updatedContent, lineEnding),
+    );
     const fileStat = await stat(absolutePath);
     updateReadFileState(absolutePath, updatedContent, fileStat.mtimeMs);
 

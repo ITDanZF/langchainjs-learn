@@ -1,4 +1,5 @@
 import type { ExecutionContext } from "./ExecutionContext.ts";
+import type { ToolExecutionEvent } from "../security/GuardedTool.ts";
 
 export type AgentEventSource = Pick<
   ExecutionContext,
@@ -28,6 +29,27 @@ export type AgentEventPayload =
       readonly type: "run_failed";
       readonly partialContent: string;
       readonly error: string;
+    }
+  | {
+      readonly type: "run_timed_out";
+      readonly partialContent: string;
+      readonly timeoutMs: number;
+    }
+  | {
+      readonly type:
+        | "tool_started"
+        | "tool_approval_requested"
+        | "tool_approved"
+        | "tool_rejected"
+        | "tool_completed";
+      readonly toolName: string;
+      readonly summary: string;
+    }
+  | {
+      readonly type: "tool_failed";
+      readonly toolName: string;
+      readonly summary: string;
+      readonly error: string;
     };
 
 export type AgentEvent = AgentEventSource & AgentEventPayload;
@@ -52,4 +74,32 @@ export async function emitAgentEvent(
   event: AgentEvent,
 ): Promise<void> {
   await handler?.(event);
+}
+
+export async function emitToolExecutionEvent(
+  handler: AgentEventHandler | undefined,
+  source: AgentEventSource,
+  event: ToolExecutionEvent,
+): Promise<void> {
+  if (event.type === "tool_failed") {
+    await emitAgentEvent(
+      handler,
+      createAgentEvent(source, {
+        type: "tool_failed",
+        toolName: event.request.toolName,
+        summary: event.request.summary,
+        error: event.error,
+      }),
+    );
+    return;
+  }
+
+  await emitAgentEvent(
+    handler,
+    createAgentEvent(source, {
+      type: event.type,
+      toolName: event.request.toolName,
+      summary: event.request.summary,
+    }),
+  );
 }

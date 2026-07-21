@@ -5,6 +5,7 @@ import Conversation from "./Memory/Conversation.ts";
 import SessionView from "./cli/SessionView.ts";
 import commandSet from "./cli/CommandSet.ts";
 import AgentGenerator from "./Agent/AgentGenerator.ts";
+import { promptForToolApproval } from "./cli/ToolApprovalPrompt.ts";
 
 async function main() {
   const cli = new CLI();
@@ -13,7 +14,7 @@ async function main() {
   await bootstrap.setup();
   const conversation = new Conversation();
   const sessionView = new SessionView();
-  const runTime = new AgentGenerator();
+  const runTime = new AgentGenerator({ approval: promptForToolApproval });
 
   sessionView.renderDashboard(conversation);
 
@@ -27,7 +28,6 @@ async function main() {
       return;
     }
 
-    // 运行一次标识单次的任务执行
     conversation.appendMessage({
       role: "user",
       content: commandResult.input,
@@ -36,46 +36,69 @@ async function main() {
     sessionView.renderUserMessage(commandResult.input);
     process.stdout.write("\x1b[32mAI：\x1b[0m");
 
-    const content = await runTime.run(commandResult.input, {
-      threadId: conversation.getActiveThreadId(),
-      onChunk: (chunk) => {
-        process.stdout.write(chunk);
-      },
-      onAgentEvent: (event) => {
-        if (event.agentType === 'main') {
-          return;
-        }
+    const handleInterrupt = () => {
+      if (runTime.cancelCurrentRun()) {
+        process.stdout.write("\n正在取消当前任务；再次按 Ctrl+C 可退出。\n");
+      }
+    };
+    process.once("SIGINT", handleInterrupt);
 
-        switch (event.type) {
-          case 'run_started':
-            process.stdout.write(
-              `\n[agent:test] started ${event.agentType} (${event.runId})\n`,
-            );
-            break;
+    let content: string;
+    try {
+      content = await runTime.run(commandResult.input, {
+        threadId: conversation.getActiveThreadId(),
+        onChunk: (chunk) => {
+          process.stdout.write(chunk);
+        },
+        onAgentEvent: (event) => {
+          if (event.agentType === "main") {
+            return;
+          }
 
-          case 'run_completed':
-            process.stdout.write(
-              `\n[agent:test] completed ${event.agentType} (${event.runId})\n`,
-            );
-            break;
-
-          case 'run_aborted':
-            process.stdout.write(
-              `\n[agent:test] aborted ${event.agentType} (${event.runId})\n`,
-            );
-            break;
-
-          case 'run_failed':
-            process.stdout.write(
-              `\n[agent:test] failed ${event.agentType}: ${event.error}\n`,
-            );
-            break;
-
-          case 'text_delta':
-            break;
-        }
-      },
-    });
+          switch (event.type) {
+            case "run_started":
+              process.stdout.write(
+                `\n[agent] started ${event.agentType} (${event.runId})\n`,
+              );
+              break;
+            case "run_completed":
+              process.stdout.write(
+                `\n[agent] completed ${event.agentType} (${event.runId})\n`,
+              );
+              break;
+            case "run_aborted":
+              process.stdout.write(
+                `\n[agent] aborted ${event.agentType} (${event.runId})\n`,
+              );
+              break;
+            case "run_timed_out":
+              process.stdout.write(
+                `\n[agent] timed out ${event.agentType} (${event.runId})\n`,
+              );
+              break;
+            case "run_failed":
+              process.stdout.write(
+                `\n[agent] failed ${event.agentType}: ${event.error}\n`,
+              );
+              break;
+            case "tool_failed":
+              process.stdout.write(
+                `\n[tool] failed ${event.toolName}: ${event.error}\n`,
+              );
+              break;
+            case "text_delta":
+            case "tool_started":
+            case "tool_approval_requested":
+            case "tool_approved":
+            case "tool_rejected":
+            case "tool_completed":
+              break;
+          }
+        },
+      });
+    } finally {
+      process.removeListener("SIGINT", handleInterrupt);
+    }
 
     process.stdout.write("\n\n");
 

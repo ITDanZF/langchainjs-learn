@@ -10,7 +10,12 @@ export type ModelRunInput = {
   readonly systemPrompt: string;
   readonly tools: RegisteredTool[];
   readonly signal?: AbortSignal;
+  readonly maxTurns?: number;
 };
+
+function getRecursionLimit(maxTurns: number | undefined): number | undefined {
+  return maxTurns === undefined ? undefined : maxTurns * 2 + 1;
+}
 
 export default class Model {
   private readonly CurrentModel: ChatOpenAI;
@@ -48,6 +53,7 @@ export default class Model {
       },
       {
         ...this.CurrentMemory.getConfig(input.threadId),
+        recursionLimit: getRecursionLimit(input.maxTurns),
         signal: input.signal,
       },
     );
@@ -63,6 +69,7 @@ export default class Model {
       },
       {
         ...this.CurrentMemory.getConfig(input.threadId),
+        recursionLimit: getRecursionLimit(input.maxTurns),
         streamMode: 'messages' as const,
         signal: input.signal,
       },

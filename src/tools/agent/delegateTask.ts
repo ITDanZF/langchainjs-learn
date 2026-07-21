@@ -6,8 +6,7 @@ import type {
   RunAgentInput,
 } from "../../Agent/AgentRuntime.ts";
 import AgentRegistry from "../../Agent/AgentRegistry.ts";
-
-const MAX_DELEGATION_DEPTH = 1;
+import type RunBudget from "../../Agent/RunLimits.ts";
 
 const delegateTaskSchema = z.object({
   subagent_type: z
@@ -34,6 +33,7 @@ export type DelegateTaskContext = {
   readonly parentDepth: number;
   readonly signal?: AbortSignal;
   readonly onEvent?: AgentEventHandler;
+  readonly budget: RunBudget;
 };
 
 export function formatDelegateTaskResult(
@@ -82,10 +82,12 @@ export function createDelegateTaskTool(
 
   return tool(
     async ({ subagent_type, description, prompt }) => {
-      if (context.parentDepth >= MAX_DELEGATION_DEPTH) {
+      if (
+        context.parentDepth >= context.budget.limits.maxDelegationDepth
+      ) {
         return [
           "Subagent delegation rejected.",
-          `Maximum delegation depth is ${MAX_DELEGATION_DEPTH}.`,
+          `Maximum delegation depth is ${context.budget.limits.maxDelegationDepth}.`,
         ].join("\n");
       }
 
@@ -100,6 +102,7 @@ export function createDelegateTaskTool(
           depth: context.parentDepth + 1,
           signal: context.signal,
           onEvent: context.onEvent,
+          budget: context.budget,
         });
 
         return formatDelegateTaskResult(description, result);
