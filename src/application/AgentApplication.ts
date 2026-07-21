@@ -174,6 +174,7 @@ export default class AgentApplication {
             timestamp: new Date().toISOString(),
           }),
         onAgentEvent: (event) => this.handleAgentEvent(runId, event),
+        onOrchestrationEvent: (event) => this.emit(event),
       });
 
       const completedAt = new Date().toISOString();

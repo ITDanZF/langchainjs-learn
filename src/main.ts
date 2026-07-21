@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-import AgentGenerator from "./Agent/AgentGenerator.ts";
+import { createAgentOrchestrator } from "./Agent/orchestration/index.ts";
 import AgentApplication from "./application/AgentApplication.ts";
 import ThreadApplication from "./application/ThreadApplication.ts";
 import Bootstrap from "./bootstrap/index.ts";
@@ -18,7 +18,7 @@ async function main() {
   const cli = new CLI(inputSession);
   const threads = new ThreadApplication(new JsonStore());
   const sessionView = new SessionView();
-  const application = new AgentApplication(new AgentGenerator());
+  const application = new AgentApplication(createAgentOrchestrator());
   const cliAdapter = new CliAdapter(application, inputSession);
 
   sessionView.renderDashboard(threads.getSnapshot());

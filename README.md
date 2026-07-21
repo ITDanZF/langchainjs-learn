@@ -24,6 +24,8 @@
 - 内置 `read_file`、`list_files`、`search_text`、`write_file` 和 `edit_file`。
 - 写入和编辑默认需要终端确认，可选择仅允许一次或当前会话允许。
 - 支持主 Agent 向只读文本子 Agent 委派任务。
+- 支持复杂只读任务的结构化计划、DAG 验证、确定性串行调度和结果评审。
+- 简单任务保留 direct mode，不强制进入多 Agent 编排。
 - 支持最大轮次、工具调用预算、委派深度、运行超时和 Ctrl+C 取消。
 
 ## 架构图
@@ -181,6 +183,7 @@ src/model/
 
 src/Agent/
   主 Agent、子 Agent、事件、执行上下文和运行预算。
+  orchestration/：结构化计划、DAG 验证、任务调度、结果评审与答案汇总。
 
 src/tools/
   文件工具、路径边界、原子写入和工具注册。
@@ -217,6 +220,17 @@ maxToolCalls         20
 timeoutMs            120000
 maxDelegationDepth   1
 ```
+
+结构化编排第一阶段限制：
+
+```txt
+maxPlanTasks         6
+maxPlanDepth         4
+maxTaskAttempts      2
+planned sideEffect   none
+```
+
+计划任务目前串行执行且仅允许无副作用的内置子 Agent；写入任务继续走 direct mode 和现有人工审批。后续阶段将在资源锁和失败传播基础上开启安全并行。
 
 关于 LangChainJS 工具的官方机制，可查看：
 

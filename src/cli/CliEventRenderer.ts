@@ -14,6 +14,38 @@ export default class CliEventRenderer {
           `\n[agent] ${event.status} ${event.agentType} (${event.agentRunId})\n`,
         );
         break;
+      case "plan_created":
+        if (event.plan.mode === "planned") {
+          this.input.write(
+            `\n[plan] created ${event.plan.tasks.length} tasks (${event.plan.planId})\n`,
+          );
+        }
+        break;
+      case "task_started":
+        this.input.write(
+          `\n[task] started ${event.taskId} with ${event.agentType} (attempt ${event.attempt})\n`,
+        );
+        break;
+      case "task_reviewed":
+        this.input.write(
+          `\n[review] ${event.taskId} ${event.decision} (score ${event.score})\n`,
+        );
+        break;
+      case "task_retrying":
+        this.input.write(
+          `\n[task] retrying ${event.taskId} (attempt ${event.nextAttempt})\n`,
+        );
+        break;
+      case "task_failed":
+      case "task_skipped":
+        this.input.write(
+          `\n[task] ${event.type.replace("task_", "")} ${event.taskId}: ${event.error ?? "unknown"}\n`,
+        );
+        break;
+      case "task_completed":
+      case "synthesis_started":
+      case "synthesis_completed":
+        break;
       case "tool_status":
         if (event.status === "failed") {
           this.input.write(

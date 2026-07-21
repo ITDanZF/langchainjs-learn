@@ -1,4 +1,5 @@
 import type { ToolApprovalDecision } from "../security/ToolPolicy.ts";
+import type { OrchestrationEvent } from "../Agent/orchestration/contracts.ts";
 
 export type StartRunRequest = {
   readonly threadId: string;
@@ -89,7 +90,8 @@ export type ApplicationEvent =
       readonly error: SerializableError;
       readonly durationMs: number;
       readonly timestamp: string;
-    };
+    }
+  | OrchestrationEvent;
 
 export type ApplicationEventHandler = (
   event: ApplicationEvent,

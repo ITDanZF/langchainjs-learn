@@ -1,4 +1,5 @@
 import AgentModel from "../model/index.ts";
+import Model from "../model/Model.ts";
 import { baseSystemPrompt } from "../model/prompts/system.ts";
 import { createTools } from "../tools/index.ts";
 import ToolResolver from "../tools/ToolResolver.ts";
@@ -9,6 +10,7 @@ import ToolPolicy, {
   type ToolApprovalHandler,
 } from "../security/ToolPolicy.ts";
 import AgentRuntime from "./AgentRuntime.ts";
+import AgentRegistry from "./AgentRegistry.ts";
 import {
   createAgentEvent,
   emitAgentEvent,
@@ -38,6 +40,9 @@ export type AgentGeneratorOptions = {
   readonly approval?: ToolApprovalHandler;
   readonly policy?: ToolPolicy;
   readonly limits?: RunLimits;
+  readonly model?: Model;
+  readonly registry?: AgentRegistry;
+  readonly toolResolver?: ToolResolver;
 };
 
 const delegationPrompt = [
@@ -47,9 +52,9 @@ const delegationPrompt = [
 ].join("\n\n");
 
 export default class AgentGenerator {
-  private readonly agent;
-  private readonly registry = createBuiltInAgentRegistry();
-  private readonly toolResolver = new ToolResolver();
+  private readonly model: Model;
+  private readonly registry: AgentRegistry;
+  private readonly toolResolver: ToolResolver;
   private readonly subagentRuntime: AgentRuntime;
   private readonly approval: ToolApprovalHandler;
   private readonly policy: ToolPolicy;
@@ -57,13 +62,15 @@ export default class AgentGenerator {
   private readonly activeRuns = new Map<string, RunAbortScope>();
 
   constructor(options: AgentGeneratorOptions = {}) {
-    this.agent = new AgentModel().getActiveAgent();
+    this.model = options.model ?? new AgentModel().getActiveAgent().model;
+    this.registry = options.registry ?? createBuiltInAgentRegistry();
+    this.toolResolver = options.toolResolver ?? new ToolResolver();
     this.approval = options.approval ?? denyToolApproval;
     this.policy = options.policy ?? new ToolPolicy();
     this.limits = options.limits ?? DEFAULT_RUN_LIMITS;
     this.subagentRuntime = new AgentRuntime(
       this.registry,
-      this.agent.model,
+      this.model,
       this.toolResolver,
       this.policy,
       this.approval,
@@ -146,7 +153,7 @@ export default class AgentGenerator {
         return "";
       }
 
-      for await (const chunk of this.agent.model.stream({
+      for await (const chunk of this.model.stream({
         prompt: input,
         threadId: context.threadId,
         systemPrompt: delegationPrompt,
