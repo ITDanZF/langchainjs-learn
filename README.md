@@ -1,188 +1,333 @@
-# Agent TUI
+# mini-agent-langchain
 
-一个用 Node.js 和 TypeScript 学习 AI Agent 的实践仓库。
+`mini-agent-langchain` 是一个基于 LangChain.js / LangGraph 的命令行 Agent 原型。它的目标不是做一个简单的聊天壳，而是逐步沉淀出一套可扩展的本地 Agent 运行时：支持多会话、短期记忆、可读历史记录、工具系统，以及未来的云端同步。
 
-这个项目不是直接套一个现成框架，而是从最小的命令行对话程序开始，逐步拆解并实现一个 Agent Runtime：消息、模型调用、流式输出、工具系统、权限控制、运行循环、记忆和最终的 mini coding agent。
+当前项目重点已经成型在两块：
 
-如果你也想弄清楚 LangChain、LangGraph、Claude Code、Copilot 这类 Agent 工具背后到底在做什么，这个仓库就是一条偏工程实践的学习路线。
+- **记忆系统**：用 SQLite checkpointer 给 AI 保存上下文，用 JSON 给程序保存可展示会话历史。
+- **CLI 会话系统**：支持创建、查看、切换 thread，让同一个会话 id 同时驱动用户历史和 AI checkpoint。
 
-## 为什么做这个项目
+## 功能概览
 
-今天写 AI 应用已经很容易了，但真正困难的是理解这些问题：
+- 基于 `langchain` 的 `createAgent` 创建 Agent。
+- 基于 `@langchain/openai` 接入 OpenAI-compatible chat model。
+- 基于 `@langchain/langgraph-checkpoint-sqlite` 持久化 AI 短期记忆。
+- 基于 JSON 文件保存用户可见的会话索引和消息记录。
+- 支持 CLI 会话命令：
+  - `/thread`
+  - `/threads`
+  - `/thread-new [title]`
+  - `/thread-use <id>`
+  - `/help`
+- 预留工具系统目录，后续可接入 `read_file`、`list_files`、`search_files` 等 LangChain tools。
 
-- Agent 为什么不只是一次大模型调用？
-- messages、system prompt、tool call、memory 分别承担什么角色？
-- 工具调用为什么需要 schema、权限和错误处理？
-- 一个 coding agent 是如何读文件、搜代码、跑命令、分析失败并继续下一轮的？
-- 什么时候应该手写，什么时候应该使用 LangChain.js / LangGraph.js 这类框架？
+## 架构图
 
-这个项目的目标是把这些概念拆成可以运行、可以修改、可以调试的小步骤。
+```mermaid
+flowchart TD
+  User[User] --> CLI[CLI Input Loop]
+  CLI --> CommandSet[CommandSet]
+  CommandSet -->|session commands| Conversation[Conversation]
+  CommandSet -->|normal input| Main[main.ts]
 
-## 适合谁
+  Main -->|append user message| Conversation
+  Main -->|invoke input + activeThreadId| Model[Model]
+  Model --> Agent[LangChain createAgent]
+  Agent --> ChatModel[ChatOpenAI-compatible Model]
+  Agent --> Tools[Tools]
+  Agent --> Checkpointer[SQLite Checkpointer]
 
-- 想系统学习 AI Agent，但不满足于只调用一个 SDK 的开发者。
-- 熟悉 JavaScript / TypeScript，想进入 LLM 应用开发的人。
-- 想理解工具调用、Agent Loop、记忆、RAG、工作流编排的工程实现的人。
-- 想从“会用 AI 写代码”进一步走向“能设计 AI 编程工具”的人。
+  Conversation --> JsonStore[JsonStore]
+  JsonStore --> IndexJson[sessions/index.json]
+  JsonStore --> ThreadJson[sessions/threadId.json]
 
-## 项目亮点
+  Checkpointer --> MemorySqlite[sessions/memory.sqlite]
+  Main -->|append assistant message| Conversation
 
-- 从 0 到 1 手写最小 Agent Runtime，不把核心机制藏在框架后面。
-- 使用 Node.js / TypeScript，适合前端、全栈和 Node.js 开发者学习。
-- 包含真实大模型调用示例，目前示例项目以 DeepSeek API 为主。
-- 设计了消息缓存、流式输出、工具注册、Zod 参数校验和工具权限分层。
-- 提供两条学习路径：先手写底层机制，再使用 LangChain.js / LangGraph.js 构建复杂应用。
-- 最终目标是实现一个迷你编程智能体，能围绕项目文件、搜索、命令执行和测试反馈形成工作循环。
-
-## 仓库结构
-
-```text
-agent-tui/
-  docs/
-    nodejs-agent-course/        # 第一版：手写 Node.js Agent 教程
-    langchainjs-agent-course/   # 第二版：LangChain.js / LangGraph.js 进阶教程
-  mini-agent/                   # 第一版课程配套的最小 Agent 示例项目
+  Bootstrap[Bootstrap] --> Config[config.json]
+  Bootstrap --> Workspace[Workspace]
+  Bootstrap --> ModelRuntime[AgentModel Runtime]
+  ModelRuntime --> Model
 ```
 
-## 学习路线
+## 记忆系统设计
 
-建议学习顺序是：
+项目中有两种“记忆”，职责不同。
 
-```text
-先手写，理解机制
-  ↓
-再用框架，构建复杂应用
+```txt
+SQLite Checkpointer
+  给 AI 用
+  保存 LangGraph Agent state
+  根据 thread_id 恢复模型上下文
+
+JsonStore
+  给程序和用户界面用
+  保存会话列表和可读历史消息
+  支持 /threads 和 /thread-use
 ```
 
-### 第一阶段：手写 Node.js Agent
+### 存储布局
 
-入口文档：[docs/nodejs-agent-course/README.md](docs/nodejs-agent-course/README.md)
+运行后会在用户目录下创建：
 
-这一阶段会从最小 CLI 程序开始，逐步实现：
-
-- 命令行输入与多轮对话。
-- OpenAI-compatible Chat Completions 调用。
-- DeepSeek API 接入。
-- 流式输出。
-- LLM Client 封装。
-- Tool Registry 工具注册中心。
-- 文件读取、搜索和命令执行工具。
-- Agent Runtime 循环。
-- 状态、上下文与记忆。
-- 迷你编程智能体。
-
-### 第二阶段：LangChain.js / LangGraph.js 进阶
-
-入口文档：[docs/langchainjs-agent-course/README.md](docs/langchainjs-agent-course/README.md)
-
-这一阶段会在理解底层机制后，使用成熟框架实现更复杂的 Agent 应用：
-
-- ChatModel 与 Prompt Template。
-- Runnable / LCEL 管道。
-- Tools 与结构化输出。
-- ReAct Agent。
-- LangGraph 状态图。
-- 多轮记忆和检查点。
-- RAG 知识库问答。
-- 多工具业务助手。
-- 评估、观测与部署。
-- 企业知识库与工单助手综合项目。
-
-## mini-agent 当前能力
-
-`mini-agent/` 是当前正在演进的最小示例项目，目前已经包含：
-
-- TypeScript + ESM 项目结构。
-- `.env` 配置读取。
-- DeepSeek Chat Completions 流式调用。
-- `user / assistant / system / tool` 消息类型设计。
-- 基于内存的消息缓存。
-- 工具定义、工具注册、工具查找和工具执行入口。
-- 基于 Zod 的工具参数校验。
-- `read / write / execute_safe / execute_risky` 工具权限分层设计。
-
-它还在学习型开发阶段，部分章节中的能力会随着课程推进逐步补全。
-
-## 快速开始
-
-进入示例项目：
-
-```bash
-cd mini-agent
+```txt
+~/.mini-agent/
+  config.json
+  logs/
+  sessions/
+    index.json
+    <threadId>.json
+    memory.sqlite
+  workSpaceRoot/
 ```
 
-安装依赖：
+其中：
+
+- `sessions/index.json`：会话索引，保存 `threadId`、标题、创建时间、更新时间。
+- `sessions/<threadId>.json`：单个会话的用户可见消息历史。
+- `sessions/memory.sqlite`：LangGraph SQLite checkpointer，用来恢复 AI 上下文。
+
+### 会话切换如何恢复 AI 记忆
+
+切换会话时，程序从 `JsonStore` 读取会话 id：
+
+```txt
+/thread-use <id>
+  -> Conversation.switchConversation(id)
+  -> activeThreadId = id
+```
+
+下一次用户输入时：
+
+```txt
+main.ts
+  -> model.invoke(input, conversation.getActiveThreadId())
+  -> Memory.getConfig(threadId)
+  -> { configurable: { thread_id: threadId } }
+  -> SQLite checkpointer 根据 thread_id 恢复上下文
+```
+
+所以同一个 `threadId` 同时连接两层存储：
+
+```txt
+JsonStore/<threadId>.json
+  用户可见历史
+
+SQLite checkpointer thread_id=<threadId>
+  AI 内部上下文
+```
+
+## 核心运行流程
+
+```mermaid
+sequenceDiagram
+  participant U as User
+  participant CLI as CLI
+  participant C as Conversation
+  participant M as Model
+  participant A as LangChain Agent
+  participant J as JsonStore
+  participant S as SQLite Checkpointer
+
+  U->>CLI: 输入消息
+  CLI->>C: 获取 activeThreadId
+  CLI->>J: 保存 user message
+  CLI->>M: invoke(input, threadId)
+  M->>A: agent.invoke(messages, config)
+  A->>S: 读取 thread_id 对应 checkpoint
+  A->>A: 模型推理 / 工具调用
+  A->>S: 写入最新 checkpoint
+  A-->>M: 返回 result.messages
+  CLI->>J: 保存 assistant message
+  CLI-->>U: 渲染最终回答
+```
+
+## 模块说明
+
+```txt
+src/main.ts
+  CLI 主循环，连接命令系统、会话系统和模型调用。
+
+src/bootstrap/
+  启动初始化，包括用户配置、工作目录、Agent runtime。
+
+src/config/
+  读取和写入 ~/.mini-agent/config.json。
+
+src/workspace/
+  管理 ~/.mini-agent、sessions、logs、workspaceRoot 等目录。
+
+src/cli/
+  命令解析、会话命令、终端视图渲染。
+
+src/Memory/
+  Conversation：当前会话控制器。
+  JsonStore：会话索引和可读历史存储。
+  SqliteStore：LangGraph SQLite checkpointer。
+  Memory：checkpointer 门面。
+
+src/model/
+  AgentModel：Agent runtime 管理。
+  Model：LangChain Agent 封装。
+  prompts/：系统提示词。
+  tools/：工具系统预留目录。
+```
+
+## 工具系统规划
+
+当前 `src/model/tools` 还是轻量骨架，推荐下一步按 LangChainJS 官方工具机制接入。
+
+计划结构：
+
+```txt
+src/model/tools/
+  index.ts
+  common/
+    IO_tool.ts
+    Search_tool.ts
+    Shell_tool.ts
+```
+
+推荐第一批工具：
+
+```txt
+read_file
+  读取文本文件
+
+list_files
+  列出目录内容
+
+search_files
+  在工作区内搜索文本
+```
+
+工具接入 `Model.ts` 的方式：
+
+```ts
+this.CurrentAgent = createAgent({
+  model: this.CurrentModel,
+  tools: Tools.getTools(),
+  checkpointer: this.CurrentMemory.getCheckpointer(),
+});
+```
+
+关于 LangChainJS 工具的官方机制，可查看：
+
+[docs/langchainjs-tools-guide.md](./docs/langchainjs-tools-guide.md)
+
+## 安装
 
 ```bash
 npm install
 ```
 
-配置环境变量：
+Windows 上如果安装 `better-sqlite3` 失败，需要安装 Visual Studio Build Tools，并勾选 C++ 构建工具链。
 
-```env
-DEEPSEEK_API_KEY=你的 DeepSeek API Key
-DEEPSEEK_MODEL=deepseek-chat
-```
+## 配置
 
-运行开发命令：
+首次运行时，程序会引导填写：
+
+- 模型提供商
+- 模型名称
+- API Key
+- Base URL
+- 工作目录
+
+也可以参考 `.env.example` 和 `~/.mini-agent/config.json` 手动配置。
+
+## 开发运行
 
 ```bash
 npm run dev
 ```
 
-类型检查：
+或：
 
 ```bash
-npx tsc --noEmit
+npm run chatx
 ```
 
-构建：
+## 构建
 
 ```bash
 npm run build
 ```
 
-注意：当前 `mini-agent` 代码会跟随教程章节持续演进。如果运行行为和某一章文档不一致，请以当前正在学习的章节为准。
-
-## 计划中的能力
-
-- 完善 CLI 交互入口。
-- 增加 `list_files`、`read_file`、`search_text` 等项目观察工具。
-- 增加受控的 `run_command` 命令执行工具。
-- 实现模型选择工具、执行工具、接收观察结果的 Agent Loop。
-- 增加上下文裁剪和消息摘要。
-- 增加写文件前 diff 展示和用户确认机制。
-- 增加测试反馈循环，让 Agent 可以分析失败并提出修复方案。
-- 增加更完整的 TUI 体验。
-
-## 项目原则
-
-- 先理解机制，再追求封装。
-- 先保证可控，再增加自动化。
-- 工具执行必须有权限边界。
-- 写文件、执行高风险命令前应有确认流程。
-- 示例代码优先服务学习，不追求一开始就做成通用框架。
-
-## 常用命令
-
-在 `mini-agent/` 目录下：
+## 类型检查
 
 ```bash
-npm install
-npm run dev
-npx tsc --noEmit
-npm run build
+npm run typecheck
 ```
 
-## 安全提醒
+## 完整检查
 
-- 不要提交 `.env`、API Key、Token 或其他敏感信息。
-- 命令执行工具应设置 allowlist、超时和权限确认。
-- 写文件工具应限制在 workspace 内，并在写入前展示 diff。
-- 自动修复类能力应限制最大轮数、最大修改文件数和连续失败次数。
+```bash
+npm run check
+```
 
-## 欢迎关注
+## CLI 命令
 
-这个项目会持续记录我从 0 到 1 学习和实现 AI Agent 的过程。
+```txt
+/thread
+  查看当前会话
 
-如果你也在学习 Agent、LLM 应用工程、LangChain.js、LangGraph.js 或 AI 编程工具，欢迎一起交流、提 issue、补充案例，或者把这个仓库当作自己的学习路线图。
+/threads
+  查看所有会话
+
+/thread-new [title]
+  新建会话并切换过去
+
+/thread-use <id>
+  切换到已有会话
+
+/help
+  显示帮助
+```
+
+## 设计原则
+
+### 会话 id 属于业务层
+
+会话 id 由 `JsonStore` 的 `index.json` 持久化管理，而不是由 SQLite checkpointer 生成。
+
+```txt
+JsonStore
+  threadId 的来源
+
+SQLite Checkpointer
+  threadId 的消费者
+```
+
+这样未来上云时，可以把 `JsonStore` 替换或扩展为：
+
+```txt
+CloudThreadStore
+HybridThreadStore
+```
+
+而 SQLite checkpointer 仍然只根据同一个 `threadId` 恢复 AI 上下文。
+
+### JsonStore 只保存用户可见历史
+
+工具调用结果默认不写入 JSON 历史。原因是工具结果属于 Agent 内部过程，最终 assistant 输出已经基于工具结果生成。
+
+```txt
+JsonStore
+  user / assistant 可见消息
+
+SQLite Checkpointer
+  HumanMessage / AIMessage / ToolMessage / checkpoint state
+```
+
+如果未来需要调试或审计工具调用，可以再开启 `tool` 消息记录。
+
+## 后续路线
+
+- 完成 `Tools` 静态工具集合。
+- 接入 `read_file` 和 `list_files`。
+- 新增 `/history` 命令，展示当前会话 JSON 历史。
+- 新增 `/thread-delete <id>`。
+- 抽象 `ThreadStore` / `MessageStore` 接口，为云同步做准备。
+- 加入工具权限模型。
+- 支持 MCP 或第三方工具包。
+
