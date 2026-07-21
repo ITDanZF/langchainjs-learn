@@ -4,7 +4,7 @@ import Bootstrap from "./bootstrap/index.ts";
 import Conversation from "./Memory/Conversation.ts";
 import SessionView from "./cli/SessionView.ts";
 import commandSet from "./cli/CommandSet.ts";
-import AgentGenerator from "./Generator/AgentGenerator.ts";
+import AgentGenerator from "./Agent/AgentGenerator.ts";
 
 async function main() {
   const cli = new CLI();
@@ -28,25 +28,63 @@ async function main() {
     }
 
     // 运行一次标识单次的任务执行
-    await runTime.AgentRuntime(commandResult.input);
-    // conversation.appendMessage({
-    //   role: "user",
-    //   content: commandResult.input,
-    // });
+    conversation.appendMessage({
+      role: "user",
+      content: commandResult.input,
+    });
 
-    // sessionView.renderUserMessage(commandResult.input);
-    // sessionView.renderThinking();
+    sessionView.renderUserMessage(commandResult.input);
+    process.stdout.write("\x1b[32mAI：\x1b[0m");
 
-    // const result = await runTime.AgentRuntime.model.invoke(
-    //   commandResult.input,
-    //   conversation.getActiveThreadId(),
-    // );
-    // conversation.appendMessage({
-    //   role: "assistant",
-    //   content: JSON.stringify(result.messages?.at(-1)?.content),
-    // });
+    const content = await runTime.run(commandResult.input, {
+      threadId: conversation.getActiveThreadId(),
+      onChunk: (chunk) => {
+        process.stdout.write(chunk);
+      },
+      onAgentEvent: (event) => {
+        if (event.agentType === 'main') {
+          return;
+        }
 
-    // sessionView.renderAgentResult(result);
+        switch (event.type) {
+          case 'run_started':
+            process.stdout.write(
+              `\n[agent:test] started ${event.agentType} (${event.runId})\n`,
+            );
+            break;
+
+          case 'run_completed':
+            process.stdout.write(
+              `\n[agent:test] completed ${event.agentType} (${event.runId})\n`,
+            );
+            break;
+
+          case 'run_aborted':
+            process.stdout.write(
+              `\n[agent:test] aborted ${event.agentType} (${event.runId})\n`,
+            );
+            break;
+
+          case 'run_failed':
+            process.stdout.write(
+              `\n[agent:test] failed ${event.agentType}: ${event.error}\n`,
+            );
+            break;
+
+          case 'text_delta':
+            break;
+        }
+      },
+    });
+
+    process.stdout.write("\n\n");
+
+    if (content) {
+      conversation.appendMessage({
+        role: "assistant",
+        content,
+      });
+    }
   });
 }
 
