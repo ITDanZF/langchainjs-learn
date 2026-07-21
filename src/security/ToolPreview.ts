@@ -32,5 +32,17 @@ export function createToolApprovalPreview(
     return truncate(["+++ proposed content", content].join("\n"));
   }
 
+  if (request.toolName === "create_skill") {
+    const id = typeof input.id === "string" ? input.id : "<unknown>";
+    const content = typeof input.content === "string" ? input.content : "";
+    return truncate([
+      `Create Skill: ${id}`,
+      `Target: ~/.mini-agent/skills/user/${id}/SKILL.md`,
+      "",
+      "+++ proposed SKILL.md",
+      content,
+    ].join("\n"));
+  }
+
   return "";
 }

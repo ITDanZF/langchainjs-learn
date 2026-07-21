@@ -9,6 +9,11 @@ import SessionView from "./cli/SessionView.ts";
 import commandSet from "./cli/CommandSet.ts";
 import CLI from "./cli/index.ts";
 import JsonStore from "./Memory/JsonStore.ts";
+import Model from "./model/Model.ts";
+import SkillApplication from "./skills/SkillApplication.ts";
+import SkillContextProviderService from "./skills/SkillContextProvider.ts";
+import SkillDraftService from "./skills/SkillDraftService.ts";
+import SkillInstallService from "./skills/SkillInstallService.ts";
 
 async function main() {
   const bootstrap = new Bootstrap();
@@ -17,8 +22,20 @@ async function main() {
   const inputSession = new InputSession();
   const cli = new CLI(inputSession);
   const threads = new ThreadApplication(new JsonStore());
+  const skills = await SkillApplication.create({
+    draft: new SkillDraftService(new Model()),
+  });
+  const skillInstaller = new SkillInstallService(skills);
+  const skillContextProvider = new SkillContextProviderService(skills, {
+    threadSkillStateProvider: threads,
+  });
   const sessionView = new SessionView();
-  const application = new AgentApplication(createAgentOrchestrator());
+  const application = new AgentApplication(createAgentOrchestrator({
+    skillContextProvider,
+    skillDefinitions: skills.listSkillDefinitions(),
+    skillDefinitionsProvider: () => skills.listSkillDefinitions(),
+    skillInstaller,
+  }));
   const cliAdapter = new CliAdapter(application, inputSession);
 
   sessionView.renderDashboard(threads.getSnapshot());
@@ -27,7 +44,9 @@ async function main() {
     await cli.run(process.argv, async (input: string) => {
       const commandResult = await commandSet.execute(input, {
         threads,
+        skills,
         sessionView,
+        inputSession,
       });
 
       if (commandResult.type === "stop") {

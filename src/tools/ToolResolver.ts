@@ -1,13 +1,21 @@
-import { createTools } from "./index.ts";
+import { createTools, type CreateToolsOptions } from "./index.ts";
 
 import type { ClientTool } from '@langchain/core/tools';
 
 export type RegisteredTool = ClientTool;
 
+function isToolArray(value: unknown): value is readonly RegisteredTool[] {
+  return Array.isArray(value);
+}
+
 export default class ToolResolver {
   private readonly toolsByName = new Map<string, RegisteredTool>();
 
-  constructor(tools: readonly RegisteredTool[] = createTools()) {
+  constructor(toolsOrOptions?: readonly RegisteredTool[] | CreateToolsOptions) {
+    const tools = isToolArray(toolsOrOptions)
+      ? toolsOrOptions
+      : createTools(toolsOrOptions);
+
     for (const tool of tools) {
       if (this.toolsByName.has(tool.name)) {
         throw new Error(`Tool already registered: ${tool.name}`);

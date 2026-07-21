@@ -1,8 +1,19 @@
+export type ThreadSkillState = {
+  readonly activeSkillIds: readonly string[];
+  readonly disabledSkillIds: readonly string[];
+};
+
+export type ThreadMetadata = {
+  readonly activeSkillIds?: readonly string[];
+  readonly disabledSkillIds?: readonly string[];
+};
+
 export type ThreadRecord = {
   readonly id: string;
   readonly title: string;
   readonly createdAt: Date;
   readonly updatedAt: Date;
+  readonly metadata?: ThreadMetadata;
 };
 
 export type MessageRole = "user" | "assistant" | "system" | "tool";
@@ -21,6 +32,7 @@ export interface ThreadStore {
   getThread(threadId: string): ThreadRecord | null;
   listThreads(): ThreadRecord[];
   touchThread(threadId: string): void;
+  updateThreadMetadata(threadId: string, metadata: ThreadMetadata): ThreadRecord;
   deleteThread(threadId: string): void;
 }
 

@@ -20,6 +20,7 @@ const DEFAULT_PERMISSIONS: Readonly<Record<string, ToolPermission>> =
     delegate_task: "allow",
     write_file: "ask",
     edit_file: "ask",
+    create_skill: "ask",
   });
 
 export default class ToolPolicy {

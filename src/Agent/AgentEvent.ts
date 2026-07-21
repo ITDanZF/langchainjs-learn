@@ -18,6 +18,16 @@ export type AgentEventPayload =
       readonly content: string;
     }
   | {
+      readonly type: "skill_selected";
+      readonly skills: readonly {
+        readonly id: string;
+        readonly name: string;
+        readonly score: number;
+        readonly reasons: readonly string[];
+        readonly matchedTerms: readonly string[];
+      }[];
+    }
+  | {
       readonly type: "run_completed";
       readonly content: string;
     }

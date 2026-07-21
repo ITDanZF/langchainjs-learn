@@ -5,10 +5,20 @@ export type RunLimits = {
   readonly maxDelegationDepth: number;
 };
 
+function readTimeoutMsFromEnv(): number {
+  const rawValue = process.env.MINI_AGENT_TIMEOUT_MS?.trim();
+  if (!rawValue) {
+    return 0;
+  }
+
+  const timeoutMs = Number(rawValue);
+  return Number.isInteger(timeoutMs) && timeoutMs >= 0 ? timeoutMs : 0;
+}
+
 export const DEFAULT_RUN_LIMITS: RunLimits = Object.freeze({
   maxTurns: 8,
   maxToolCalls: 20,
-  timeoutMs: 120_000,
+  timeoutMs: readTimeoutMsFromEnv(),
   maxDelegationDepth: 1,
 });
 
@@ -36,8 +46,8 @@ export default class RunBudget {
     if (!Number.isInteger(limits.maxToolCalls) || limits.maxToolCalls <= 0) {
       throw new Error("maxToolCalls must be a positive integer.");
     }
-    if (!Number.isInteger(limits.timeoutMs) || limits.timeoutMs <= 0) {
-      throw new Error("timeoutMs must be a positive integer.");
+    if (!Number.isInteger(limits.timeoutMs) || limits.timeoutMs < 0) {
+      throw new Error("timeoutMs must be a non-negative integer.");
     }
     if (
       !Number.isInteger(limits.maxDelegationDepth) ||
@@ -75,11 +85,13 @@ export function createRunAbortScope(
 ): RunAbortScope {
   const controller = new AbortController();
   let didTimeOut = false;
-  const timeout = setTimeout(() => {
-    didTimeOut = true;
-    controller.abort(new Error(`Agent run timed out after ${timeoutMs}ms.`));
-  }, timeoutMs);
-  timeout.unref?.();
+  const timeout = timeoutMs > 0
+    ? setTimeout(() => {
+        didTimeOut = true;
+        controller.abort(new Error(`Agent run timed out after ${timeoutMs}ms.`));
+      }, timeoutMs)
+    : undefined;
+  timeout?.unref?.();
 
   const abortFromParent = () => controller.abort(parentSignal?.reason);
   if (parentSignal?.aborted) {
@@ -93,7 +105,9 @@ export function createRunAbortScope(
     timedOut: () => didTimeOut,
     abort: (reason?: unknown) => controller.abort(reason),
     dispose: () => {
-      clearTimeout(timeout);
+      if (timeout) {
+        clearTimeout(timeout);
+      }
       parentSignal?.removeEventListener("abort", abortFromParent);
     },
   });

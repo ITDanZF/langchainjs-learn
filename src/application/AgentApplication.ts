@@ -1,5 +1,6 @@
 import type { AgentEvent } from "../Agent/AgentEvent.ts";
 import { RunTimedOutError } from "../Agent/RunLimits.ts";
+import SqliteStore from "../Memory/SqliteStore.ts";
 import { createToolApprovalPreview } from "../security/ToolPreview.ts";
 import type {
   ToolApprovalDecision,
@@ -220,6 +221,7 @@ export default class AgentApplication {
         durationMs: run?.durationMs ?? Date.now() - startedAt,
         timestamp: completedAt,
       });
+      this.clearFailedRunCheckpoints(threadId);
       throw error;
     } finally {
       const run = this.runs.get(runId);
@@ -255,6 +257,16 @@ export default class AgentApplication {
     rootRunId: string,
     event: AgentEvent,
   ): Promise<void> {
+    if (event.type === "skill_selected") {
+      await this.emit({
+        type: "skill_selected",
+        runId: rootRunId,
+        skills: event.skills,
+        timestamp: new Date().toISOString(),
+      });
+      return;
+    }
+
     if (event.agentType === "main" || event.type === "text_delta") {
       return;
     }
@@ -310,6 +322,14 @@ export default class AgentApplication {
         this.pendingApprovals.delete(approvalId);
         pending.resolve("deny");
       }
+    }
+  }
+
+  private clearFailedRunCheckpoints(threadId: string): void {
+    try {
+      SqliteStore.clearThreadCheckpoints(threadId);
+    } catch {
+      // Best-effort cleanup only. The original run error should remain visible.
     }
   }
 

@@ -13,6 +13,7 @@ import type {
   MessageStore,
   ThreadRecord,
   ThreadStore,
+  ThreadMetadata,
 } from "../application/threadPorts.ts";
 
 export type ThreadInfo = ThreadRecord;
@@ -24,6 +25,7 @@ type JsonThread = {
   title: string;
   createdAt: string;
   updatedAt: string;
+  metadata?: ThreadMetadata;
 };
 
 type JsonMessage = {
@@ -129,6 +131,20 @@ export default class JsonStore implements ThreadStore, MessageStore {
 
     thread.updatedAt = new Date().toISOString();
     this.writeIndex(index);
+  }
+
+  updateThreadMetadata(threadId: string, metadata: ThreadMetadata): ThreadInfo {
+    const index = this.readIndex();
+    const thread = index.threads.find((item) => item.id === threadId);
+
+    if (!thread) {
+      throw new Error(`Thread not found: ${threadId}`);
+    }
+
+    thread.metadata = this.normalizeThreadMetadata(metadata);
+    thread.updatedAt = new Date().toISOString();
+    this.writeIndex(index);
+    return this.toThreadInfo(thread);
   }
 
   deleteThread(threadId: string) {
@@ -239,7 +255,27 @@ export default class JsonStore implements ThreadStore, MessageStore {
       title: thread.title,
       createdAt: new Date(thread.createdAt),
       updatedAt: new Date(thread.updatedAt),
+      metadata: this.normalizeThreadMetadata(thread.metadata),
     };
+  }
+
+  private normalizeThreadMetadata(metadata: ThreadMetadata | undefined): ThreadMetadata {
+    const activeSkillIds = this.normalizeSkillIds(metadata?.activeSkillIds);
+    const disabledSkillIds = this.normalizeSkillIds(metadata?.disabledSkillIds);
+
+    return Object.freeze({
+      activeSkillIds,
+      disabledSkillIds,
+    });
+  }
+
+  private normalizeSkillIds(skillIds: readonly string[] | undefined): readonly string[] {
+    return Object.freeze(
+      [...new Set((skillIds ?? [])
+        .filter((value): value is string => typeof value === "string")
+        .map((skillId) => skillId.trim())
+        .filter(Boolean))].sort(),
+    );
   }
 
   private toStoredMessage(message: JsonMessage): StoredMessage {

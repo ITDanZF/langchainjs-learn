@@ -14,6 +14,13 @@ export default class CliEventRenderer {
           `\n[agent] ${event.status} ${event.agentType} (${event.agentRunId})\n`,
         );
         break;
+      case "skill_selected": {
+        const skills = event.skills
+          .map((skill) => `${skill.id}(${skill.matchedTerms.join(", ") || skill.score})`)
+          .join(", ");
+        this.input.write(`\n[skill] enabled ${skills}\n`);
+        break;
+      }
       case "plan_created":
         if (event.plan.mode === "planned") {
           this.input.write(

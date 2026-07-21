@@ -1,4 +1,5 @@
 import AgentRegistry from "../AgentRegistry.ts";
+import { isAgentPlanningEligible } from "../AgentPlanning.ts";
 import type { ExecutionPlan } from "./contracts.ts";
 import type {
   OrchestrationTextModel,
@@ -40,6 +41,7 @@ export default class TaskPlanner implements PlanProvider {
 
   async createPlan(request: PlanningRequest): Promise<ExecutionPlan> {
     const availableAgents = this.registry.list()
+      .filter(isAgentPlanningEligible)
       .map((agent) => `${agent.id}: ${agent.description}`)
       .join("\n");
     const basePrompt = [

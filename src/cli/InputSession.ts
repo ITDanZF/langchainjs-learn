@@ -63,6 +63,10 @@ export default class InputSession {
     return "deny";
   }
 
+  async ask(prompt: string): Promise<string> {
+    return this.io.question(prompt);
+  }
+
   write(value: string): void {
     this.io.write(value);
   }

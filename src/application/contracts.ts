@@ -69,6 +69,18 @@ export type ApplicationEvent =
       readonly timestamp: string;
     }
   | {
+      readonly type: "skill_selected";
+      readonly runId: string;
+      readonly skills: readonly {
+        readonly id: string;
+        readonly name: string;
+        readonly score: number;
+        readonly reasons: readonly string[];
+        readonly matchedTerms: readonly string[];
+      }[];
+      readonly timestamp: string;
+    }
+  | {
       readonly type: "tool_status";
       readonly runId: string;
       readonly toolName: string;

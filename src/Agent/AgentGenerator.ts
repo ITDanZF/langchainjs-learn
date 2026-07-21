@@ -1,7 +1,6 @@
 import AgentModel from "../model/index.ts";
 import Model from "../model/Model.ts";
 import { baseSystemPrompt } from "../model/prompts/system.ts";
-import { createTools } from "../tools/index.ts";
 import ToolResolver from "../tools/ToolResolver.ts";
 import { createDelegateTaskTool } from "../tools/agent/delegateTask.ts";
 import { guardTools } from "../security/GuardedTool.ts";
@@ -9,6 +8,7 @@ import ToolPolicy, {
   denyToolApproval,
   type ToolApprovalHandler,
 } from "../security/ToolPolicy.ts";
+import type { SkillContextProvider } from "../skills/SkillContextProvider.ts";
 import AgentRuntime from "./AgentRuntime.ts";
 import AgentRegistry from "./AgentRegistry.ts";
 import {
@@ -43,13 +43,18 @@ export type AgentGeneratorOptions = {
   readonly model?: Model;
   readonly registry?: AgentRegistry;
   readonly toolResolver?: ToolResolver;
+  readonly skillContextProvider?: SkillContextProvider;
 };
 
-const delegationPrompt = [
+const delegationInstructions = [
   baseSystemPrompt,
   "You can use delegate_task to assign focused text analysis, rewriting, or review work to a specialist agent.",
   "Delegate only when a specialist would materially improve the result. Use the returned result to answer the user.",
 ].join("\n\n");
+
+function createMainSystemPrompt(skillPrompt: string): string {
+  return [delegationInstructions, skillPrompt].filter(Boolean).join("\n\n");
+}
 
 export default class AgentGenerator {
   private readonly model: Model;
@@ -59,6 +64,7 @@ export default class AgentGenerator {
   private readonly approval: ToolApprovalHandler;
   private readonly policy: ToolPolicy;
   private readonly limits: RunLimits;
+  private readonly skillContextProvider?: SkillContextProvider;
   private readonly activeRuns = new Map<string, RunAbortScope>();
 
   constructor(options: AgentGeneratorOptions = {}) {
@@ -68,6 +74,7 @@ export default class AgentGenerator {
     this.approval = options.approval ?? denyToolApproval;
     this.policy = options.policy ?? new ToolPolicy();
     this.limits = options.limits ?? DEFAULT_RUN_LIMITS;
+    this.skillContextProvider = options.skillContextProvider;
     this.subagentRuntime = new AgentRuntime(
       this.registry,
       this.model,
@@ -117,7 +124,10 @@ export default class AgentGenerator {
         approval: options.approval ?? this.approval,
       },
     );
-    const tools = guardTools([...createTools(), delegateTaskTool], {
+    const tools = guardTools([
+      ...this.toolResolver.resolve(this.toolResolver.listNames()),
+      delegateTaskTool,
+    ], {
       policy: this.policy,
       approval: options.approval ?? this.approval,
       budget,
@@ -153,10 +163,29 @@ export default class AgentGenerator {
         return "";
       }
 
+      const skillContext = await this.skillContextProvider?.getSkillContext(input, {
+        threadId: options.threadId,
+      });
+      if (skillContext && skillContext.selections.length > 0) {
+        await emitAgentEvent(
+          options.onAgentEvent,
+          createAgentEvent(context, {
+            type: "skill_selected",
+            skills: skillContext.selections.map((selection) => Object.freeze({
+              id: selection.skill.manifest.id,
+              name: selection.skill.manifest.name,
+              score: selection.score,
+              reasons: selection.reasons,
+              matchedTerms: selection.matchedTerms,
+            })),
+          }),
+        );
+      }
+
       for await (const chunk of this.model.stream({
         prompt: input,
         threadId: context.threadId,
-        systemPrompt: delegationPrompt,
+        systemPrompt: createMainSystemPrompt(skillContext?.prompt ?? ""),
         tools,
         signal: context.signal,
         maxTurns: this.limits.maxTurns,

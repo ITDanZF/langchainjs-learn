@@ -44,6 +44,39 @@ export default class AgentRegistry {
     return Object.freeze(pending);
   }
 
+  replaceWhere(
+    predicate: (definition: AgentDefinition) => boolean,
+    definitions: Iterable<AgentDefinition>,
+  ): readonly AgentDefinition[] {
+    const pending = Array.from(definitions, defineAgent);
+    const ids = new Set<string>();
+
+    for (const definition of pending) {
+      if (ids.has(definition.id)) {
+        throw new Error(`Agent already registered: ${definition.id}`);
+      }
+      ids.add(definition.id);
+    }
+
+    for (const [agentId, definition] of this.definitions.entries()) {
+      if (predicate(definition)) {
+        this.definitions.delete(agentId);
+      }
+    }
+
+    for (const agentId of this.definitions.keys()) {
+      if (ids.has(agentId)) {
+        throw new Error(`Agent already registered: ${agentId}`);
+      }
+    }
+
+    for (const definition of pending) {
+      this.definitions.set(definition.id, definition);
+    }
+
+    return Object.freeze(pending);
+  }
+
   has(id: string): boolean {
     return this.definitions.has(id);
   }

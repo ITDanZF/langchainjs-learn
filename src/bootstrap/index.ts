@@ -5,16 +5,19 @@ import {
 } from "../enum/ModelProvider.constant.ts";
 import Configuration from "../config/index.ts";
 import WorkSpace from "../workspace/index.ts";
+import SkillBootstrap from "../skills/SkillBootstrap.ts";
 // import AgentModel from "../model/index.ts";
 
 export default class Bootstrap {
   private configuration = new Configuration();
   private workspace = new WorkSpace();
+  private skillBootstrap = new SkillBootstrap();
 
   constructor() {}
 
   async setup() {
     await this.initDir();
+    await this.skillBootstrap.syncBundledSkills();
 
     const configInfo = this.configuration.loadConfig();
     if (!configInfo) {
@@ -31,6 +34,7 @@ export default class Bootstrap {
   async initDir() {
     await this.workspace.createHomeRoot();
     await this.workspace.createAgentWorkSpace();
+    await this.skillBootstrap.ensureSkillRoots();
   }
 
   async initBaseInfo() {

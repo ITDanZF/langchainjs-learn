@@ -1,4 +1,5 @@
 import AgentRegistry from "../AgentRegistry.ts";
+import { isAgentPlanningEligible } from "../AgentPlanning.ts";
 import type { ExecutionPlan, PlannedExecutionPlan, PlannedTask } from "./contracts.ts";
 
 export type PlanValidationLimits = {
@@ -33,7 +34,10 @@ export default class PlanValidator {
     }
 
     for (const task of plan.tasks) {
-      this.registry.get(task.agentType);
+      const agent = this.registry.get(task.agentType);
+      if (!isAgentPlanningEligible(agent)) {
+        throw new Error(`Agent is not eligible for planned tasks: ${task.agentType}`);
+      }
       if (new Set(task.dependsOn).size !== task.dependsOn.length) {
         throw new Error(`Task has duplicate dependencies: ${task.id}`);
       }

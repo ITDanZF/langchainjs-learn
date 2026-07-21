@@ -14,6 +14,11 @@ export function workSpaceRoot() {
  * 获取当前的计算机的用户目录
  */
 export function getAgentHome() {
+  const override = process.env.MINI_AGENT_HOME?.trim();
+  if (override) {
+    return path.resolve(override);
+  }
+
   return path.join(homedir(), ".mini-agent");
 }
 

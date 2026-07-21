@@ -48,6 +48,11 @@ function summarizeInput(toolName: string, input: unknown): string {
     return `Write file: ${filePath}`;
   }
 
+  if (toolName === "create_skill") {
+    const skillId = typeof values.id === "string" ? values.id : "<unknown>";
+    return `Create skill: ${skillId}`;
+  }
+
   return filePath ? `Execute ${toolName}: ${filePath}` : `Execute ${toolName}`;
 }
 

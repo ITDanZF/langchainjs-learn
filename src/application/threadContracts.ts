@@ -1,10 +1,12 @@
 import type { MessageRole } from "./threadPorts.ts";
+import type { ThreadMetadata, ThreadSkillState } from "./threadPorts.ts";
 
 export type ThreadDto = {
   readonly id: string;
   readonly title: string;
   readonly createdAt: string;
   readonly updatedAt: string;
+  readonly metadata: ThreadMetadata;
 };
 
 export type MessageDto = {
@@ -31,3 +33,5 @@ export type AppendMessageRequest = {
   readonly content: string;
   readonly threadId?: string;
 };
+
+export type ThreadSkillStateDto = ThreadSkillState;
