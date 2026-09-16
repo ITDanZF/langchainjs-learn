@@ -1,0 +1,21 @@
+{
+  "name": "langchain-vector",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "tsx main.ts",
+    "typecheck": "tsc --noEmit",
+    "test": "node --import tsx --test tests/**/*.test.ts",
+    "check": "npm run typecheck && npm test"
+  },
+  "devDependencies": {
+    "@types/node": "^22.20.3",
+    "tsx": "^4.22.4",
+    "typescript": "^7.0.2"
+  },
+  "dependencies": {
+    "@lancedb/lancedb": "^0.38.0",
+    "apache-arrow": "^18.1.0"
+  }
+}
